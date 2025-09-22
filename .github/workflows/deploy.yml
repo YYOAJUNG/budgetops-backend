@@ -1,6 +1,7 @@
 name: Build & Deploy to OCI
 
 on:
+  workflow_dispatch: {}     # 수동 실행 버튼
   push:
     branches: [ main ]
 
