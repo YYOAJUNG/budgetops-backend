@@ -1,8 +1,14 @@
-
+# 불필요한 건 제외
 .git
-.gradle
-gradle
 build
+.gradle
 **/*.iml
 Dockerfile
 .gitignore
+
+# gradle은 기본 제외하되, wrapper만 포함(재포함)
+gradle/*
+!gradle/wrapper/**
+# gradlew 스크립트 포함되도록 (혹시 제외돼 있으면)
+!gradlew
+!gradlew.bat

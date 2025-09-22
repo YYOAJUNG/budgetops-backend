@@ -1,0 +1,45 @@
+name: Build & Deploy to OCI
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write           # GHCR push 권한
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        run: echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build image
+        run: docker build -t ghcr.io/${{ github.repository }}:latest .
+
+      - name: Push image
+        run: docker push ghcr.io/${{ github.repository }}:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH deploy to OCI
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.OCI_HOST }}
+          username: ${{ secrets.OCI_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script: |
+            set -e
+            sudo docker login ghcr.io -u ${{ github.actor }} -p ${{ github.token }}
+
+            # compose 이미지 경로를 내 레포로 보정(최초 1회만 필요)
+            sudo sed -i "s#ghcr.io/.\\+/budgetops-backend:latest#ghcr.io/${{ github.repository }}:latest#g" /opt/budgetops/backend/docker-compose.yml || true
+
+            cd /opt/budgetops/backend
+            sudo docker compose pull
+            sudo docker compose up -d
+            sudo systemctl reload nginx || true
