@@ -3,7 +3,7 @@ name: Build & Deploy to OCI
 on:
   workflow_dispatch: {}
   push:
-    branches: [ main ]
+    branches: [ main, feature/1 ]
     paths:
       - 'Dockerfile'
       - 'src/**'
