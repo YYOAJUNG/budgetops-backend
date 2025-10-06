@@ -13,16 +13,26 @@ on:
       - 'docker-compose*.yml'
       - '.github/workflows/deploy.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    env:
-      IMAGE: ghcr.io/${{ github.repository_owner }}/budgetops-backend
     steps:
       - uses: actions/checkout@v4
+
+      # 모든 이미지 경로를 소문자로 통일
+      - name: Make lowercase image repo
+        run: |
+          IMAGE_REPO="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          echo "IMAGE_REPO=${IMAGE_REPO}" >> $GITHUB_ENV
+          echo "IMAGE_TAG_LATEST=${IMAGE_REPO}:latest" >> $GITHUB_ENV
+          echo "IMAGE_TAG_SHA=${IMAGE_REPO}:${{ github.sha }}" >> $GITHUB_ENV
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -40,8 +50,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE_TAG_LATEST }}
+            ${{ env.IMAGE_TAG_SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -49,7 +59,7 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      # 선택 1) 서버에 compose 파일도 동기화할 경우
+      # (옵션) 서버의 compose 파일도 깃으로 동기화하는 경우에만
       - name: Upload compose files to server
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -68,22 +78,27 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
-          script: |
-            set -euo pipefail
-            # GHCR 읽기 전용 토큰으로 로그인 (PAT: read:packages)
-            sudo docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} -p ${{ secrets.GHCR_TOKEN }}
+        env:
+          # build job에서 만든 경로를 재계산(서버 쪽에서도 소문자 강제)
+          IMAGE_REPO: ghcr.io/${{ github.repository }}
+        script: |
+          set -euo pipefail
+          IMAGE_REPO_LC="ghcr.io/$(echo '${IMAGE_REPO}' | tr '[:upper:]' '[:lower:]')"
 
-            cd /opt/budgetops/backend
+          # GHCR 읽기 권한이 있는 토큰(예: read:packages PAT)
+          sudo docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" -p "${{ secrets.GHCR_TOKEN }}"
 
-            # compose 파일이 하나면 ↓ 이걸로
-            if [ -f docker-compose.yml ]; then
-              sudo docker compose pull
-              sudo docker compose up -d --remove-orphans
-            else
-              # base + prod 분리 구조면 ↓ 이걸로
-              sudo docker compose -f docker-compose.base.yml -f docker-compose.prod.yml pull
-              sudo docker compose -f docker-compose.base.yml -f docker-compose.prod.yml up -d --remove-orphans
-            fi
+          cd /opt/budgetops/backend
 
-            sudo docker image prune -f || true
-            sudo systemctl reload nginx || true
+          # compose 하나면 이 경로로
+          if [ -f docker-compose.yml ]; then
+            sudo docker compose pull
+            sudo docker compose up -d --remove-orphans
+          else
+            # base + prod 분리라면 이 경로로
+            sudo docker compose -f docker-compose.base.yml -f docker-compose.prod.yml pull
+            sudo docker compose -f docker-compose.base.yml -f docker-compose.prod.yml up -d --remove-orphans
+          fi
+
+          sudo docker image prune -f || true
+          sudo systemctl reload nginx || true
