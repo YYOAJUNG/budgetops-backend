@@ -1,38 +1,27 @@
 # ---- Build stage ----
 FROM eclipse-temurin:21-jdk AS build
-WORKDIR /app
+WORKDIR /workspace
 
-# gradle wrapper/설정만 먼저 복사 → 의존성 캐시
-COPY gradlew ./
-COPY gradle gradle
+# 1) Gradle wrapper & 메타 먼저 복사 (캐시층 최적화)
+COPY gradlew gradlew
+COPY gradle/ gradle/
 COPY build.gradle settings.gradle ./
-# 있으면 복사 (없으면 무시해도 OK)
-# COPY gradle.properties ./
 
+# 2) gradlew 실행권한 부여
 RUN chmod +x gradlew
-RUN ./gradlew dependencies --no-daemon || true
 
-# 소스 복사 후 빌드 (테스트 제외 추천)
-COPY src src
-RUN ./gradlew --no-daemon bootJar -x test
+# (선택) 의존성 미리 내려받아 캐시 생성
+# 실패해도 전체 빌드 계속되도록 || true
+RUN ./gradlew --no-daemon dependencies || true
+
+# 3) 소스 복사 후 빌드
+COPY src/ src/
+# 디버깅이 필요하면 --info --stacktrace 붙이세요
+RUN ./gradlew --no-daemon clean bootJar -x test --info --stacktrace
 
 # ---- Runtime stage ----
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-
-# 보안: non-root
-RUN useradd -ms /bin/bash appuser
-USER appuser
-
-# JAR 복사 (버전 붙은 파일도 커버)
-COPY --from=build /app/build/libs/*.jar /app/app.jar
-
-# JVM 옵션 (필요시 조정)
-ENV JAVA_OPTS="-Xms256m -Xmx512m -Djava.security.egd=file:/dev/./urandom"
-
+COPY --from=build /workspace/build/libs/*.jar /app/app.jar
 EXPOSE 8080
-
-# (선택) Actuator 사용 시 헬스체크
-# HEALTHCHECK --interval=30s --timeout=3s CMD curl -f http://localhost:8080/actuator/health || exit 1
-
-ENTRYPOINT ["sh","-c","exec java $JAVA_OPTS -jar /app/app.jar"]
+ENTRYPOINT ["java","-jar","/app/app.jar"]
