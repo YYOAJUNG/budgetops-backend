@@ -24,6 +24,19 @@ jobs:
       contents: read
       packages: write
     steps:
+      # jobs.build-and-push.steps 안, checkout 다음에 임시 추가
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Pre-build (debug, no tests)
+        run: |
+          chmod +x gradlew || true
+          ./gradlew --no-daemon clean bootJar -x test --info --stacktrace --warning-mode all
+      
+      # 여기까지
       - uses: actions/checkout@v4
 
       # 모든 이미지 경로를 소문자로 통일
