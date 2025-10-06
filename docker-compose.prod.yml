@@ -1,0 +1,24 @@
+services:
+  app:
+    ports:
+      - "127.0.0.1:8080:8080"  # 외부 미노출, Nginx 프록시만 통과
+    restart: always
+    # 운영 DB가 자체 컨테이너가 아니라 관리형(DBaaS)이면 app만 두고 아래 db는 생략
+    # 환경변수 값은 .env.prod 로 주입
+    environment:
+      SPRING_AUTOCONFIGURE_EXCLUDE:
+      SPRING_SQL_INIT_MODE: never
+
+  # (선택) 자체 운영 DB 컨테이너가 필요할 때만 사용
+  # db:
+  #   image: postgres:16
+  #   environment:
+  #     POSTGRES_DB: budgetops
+  #     POSTGRES_USER: ${POSTGRES_USER}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   restart: always
+
+# volumes:
+#   pgdata:

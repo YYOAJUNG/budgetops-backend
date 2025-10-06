@@ -1,9 +1,17 @@
 name: Build & Deploy to OCI
 
 on:
-  workflow_dispatch: {}     # 수동 실행 버튼
+  workflow_dispatch: {}
   push:
     branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle/**'
+      - 'docker-compose*.yml'
+      - '.github/workflows/deploy.yml'
 
 jobs:
   build-and-push:
@@ -12,47 +20,70 @@ jobs:
       contents: read
       packages: write
     env:
-      REG: ghcr.io
+      IMAGE: ghcr.io/${{ github.repository_owner }}/budgetops-backend
     steps:
       - uses: actions/checkout@v4
 
-      - name: Make image name (lowercase)
-        id: img
-        run: |
-          IMAGE_LC="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
-          echo "IMAGE=${REG}/${IMAGE_LC}:latest" >> $GITHUB_ENV
-          echo "IMAGE=${REG}/${IMAGE_LC}:latest"
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to GHCR
-        run: echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build image
-        run: docker build -t "$IMAGE" .
-
-      - name: Push image
-        run: docker push "$IMAGE"
+      - name: Build & Push (latest + sha)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: SSH deploy to OCI
-        uses: appleboy/ssh-action@v1.0.3
+      # 선택 1) 서버에 compose 파일도 동기화할 경우
+      - name: Upload compose files to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          source: |
+            docker-compose.yml
+            docker-compose.base.yml
+            docker-compose.prod.yml
+          target: /opt/budgetops/backend
+
+      - name: Remote deploy (OCI)
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            set -e
-            IMAGE_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-            IMAGE="ghcr.io/${IMAGE_LC}:latest"
-
-            sudo docker login ghcr.io -u ${{ github.actor }} -p ${{ github.token }}
-
-            # compose의 이미지 경로를 내 레포로 보정(최초 1회만 필요)
-            sudo sed -i "s#ghcr.io/.\\+/budgetops-backend:latest#${IMAGE}#g" /opt/budgetops/backend/docker-compose.yml || true
+            set -euo pipefail
+            # GHCR 읽기 전용 토큰으로 로그인 (PAT: read:packages)
+            sudo docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} -p ${{ secrets.GHCR_TOKEN }}
 
             cd /opt/budgetops/backend
-            sudo docker compose pull
-            sudo docker compose up -d
+
+            # compose 파일이 하나면 ↓ 이걸로
+            if [ -f docker-compose.yml ]; then
+              sudo docker compose pull
+              sudo docker compose up -d --remove-orphans
+            else
+              # base + prod 분리 구조면 ↓ 이걸로
+              sudo docker compose -f docker-compose.base.yml -f docker-compose.prod.yml pull
+              sudo docker compose -f docker-compose.base.yml -f docker-compose.prod.yml up -d --remove-orphans
+            fi
+
+            sudo docker image prune -f || true
             sudo systemctl reload nginx || true
