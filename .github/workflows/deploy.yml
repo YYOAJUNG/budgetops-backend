@@ -1,135 +1,46 @@
-name: Build & Deploy to OCI
-
+name: backend-deploy
 on:
-  workflow_dispatch: {}
   push:
     branches: [ main, feature/1 ]
-    paths:
-      - 'Dockerfile'
-      - 'src/**'
-      - 'build.gradle'
-      - 'settings.gradle'
-      - 'gradle/**'
-      - 'docker-compose*.yml'
-      - '.github/workflows/deploy.yml'
+  pull_request:
+    branches: [ main ]              # PR 때 빌드만
+  workflow_dispatch: { }
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+env:
+  IMAGE_NAME: ghcr.io/yyoajung/budgetops-backend
+  TAG: latest
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
     steps:
       - uses: actions/checkout@v4
-
-      # JDK 설정
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      # Gradle 캐시/설정 (권장 액션)
-      - name: Set up Gradle (with cache)
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          cache-read-only: false
-
-      # 프로젝트/래퍼 점검 (디버깅 강화)
-      - name: Inspect project & wrapper
-        run: |
-          echo "PWD: $(pwd)"
-          ls -la
-          git status || true
-          test -f gradlew || { echo "❌ gradlew not found at repo root"; exit 1; }
-          test -f gradle/wrapper/gradle-wrapper.jar || { echo "❌ gradle/wrapper/gradle-wrapper.jar missing"; exit 1; }
-          ./gradlew --version || true
-        # working-directory: ./backend   # ← 서브폴더 프로젝트면 주석 해제
-
-      # 도커 밖에서 먼저 빌드(테스트 제외) — 실패 원인 풀 로그 확보
-      - name: Gradle build (no tests, verbose)
-        run: |
-          chmod +x ./gradlew || true
-          ./gradlew clean bootJar -x test --no-daemon --stacktrace --info
-        # working-directory: ./backend   # ← 서브폴더면 동일하게 맞춰주세요
-
-      # 이미지 경로 소문자 통일
-      - name: Make lowercase image repo
-        run: |
-          IMAGE_REPO="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
-          echo "IMAGE_REPO=${IMAGE_REPO}" >> $GITHUB_ENV
-          echo "IMAGE_TAG_LATEST=${IMAGE_REPO}:latest" >> $GITHUB_ENV
-          echo "IMAGE_TAG_SHA=${IMAGE_REPO}:${{ github.sha }}" >> $GITHUB_ENV
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # 실제 컨테이너 이미지 빌드/푸시
-      - name: Build & Push (latest + sha)
-        uses: docker/build-push-action@v6
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}
+      - uses: docker/build-push-action@v6
         with:
-          context: .
-          # file: ./backend/Dockerfile   # ← Dockerfile이 서브폴더면 명시
           push: true
-          tags: |
-            ${{ env.IMAGE_TAG_LATEST }}
-            ${{ env.IMAGE_TAG_SHA }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          context: .
+          platforms: linux/amd64
+          tags: ${{ env.IMAGE_NAME }}:${{ env.TAG }}
 
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-
     steps:
-      - name: Upload compose files to server
-        uses: appleboy/scp-action@v0.1.7
+      - uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
-          source: |
-            docker-compose.yml
-            docker-compose.base.yml
-            docker-compose.prod.yml
-          target: /opt/budgetops/backend
-
-      - name: Remote deploy (OCI)
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            set -euo pipefail
-
-            # 이미지 레포 경로(소문자)
-            IMAGE_REPO_LC="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
-
-            # GHCR 로그인 (PAT: read:packages)
-            sudo docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" -p "${{ secrets.GHCR_TOKEN }}"
-
-            cd /opt/budgetops/backend
-
-            if [ -f docker-compose.yml ]; then
-              sudo docker compose pull
-              sudo docker compose up -d --remove-orphans
-            else
-              sudo docker compose -f docker-compose.base.yml -f docker-compose.prod.yml pull
-              sudo docker compose -f docker-compose.base.yml -f docker-compose.prod.yml up -d --remove-orphans
-            fi
-
-            sudo docker image prune -f || true
-            sudo systemctl reload nginx || true
+            # GHCR 로그인(토큰을 서버에 저장하지 않아도 됨)
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+            /opt/app/deploy.sh
+      - name: Verify health
+        run: |
+          test "$(curl -s -o /dev/null -w '%{http_code}' ${{ secrets.API_HEALTH }})" = "200"
