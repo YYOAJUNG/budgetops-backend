@@ -1,0 +1,46 @@
+name: backend-deploy
+on:
+  push:
+    branches: [ main, feature/1 ]
+  pull_request:
+    branches: [ main ]              # PR 때 빌드만
+  workflow_dispatch: { }
+
+env:
+  IMAGE_NAME: ghcr.io/yyoajung/budgetops-backend
+  TAG: latest
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          push: true
+          context: .
+          platforms: linux/amd64
+          tags: ${{ env.IMAGE_NAME }}:${{ env.TAG }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            # GHCR 로그인(토큰을 서버에 저장하지 않아도 됨)
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+            /opt/app/deploy.sh
+      - name: Verify health
+        run: |
+          test "$(curl -s -o /dev/null -w '%{http_code}' ${{ secrets.API_HEALTH }})" = "200"

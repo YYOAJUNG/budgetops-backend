@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/budgetops}
+    username: ${SPRING_DATASOURCE_USERNAME:budgetops}
+    password: ${SPRING_DATASOURCE_PASSWORD:secret}
+  jpa:
+    hibernate:
+      ddl-auto: update   # 개발용
+    properties:
+      hibernate:
+        format_sql: true
+  sql:
+    init:
+      mode: never
+  application:
+    name: budgetops-backend
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
