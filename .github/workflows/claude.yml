@@ -3,7 +3,7 @@ name: Claude PR Assistant
 on:
   # PR 생성/수정 트리거 (내부 브랜치 기준)
   pull_request:
-    types: [opened, edited]
+    types: [opened, synchronize]
   issue_comment:
     types: [created]
   pull_request_review_comment:
@@ -37,21 +37,16 @@ jobs:
         with:
           fetch-depth: 1
 
+      # 1) 외부 프롬프트 shallow clone + 복사 (있다면)
+      - name: Sync prompts
+        run: |
+          git clone --depth=1 https://github.com/YYOAJUNG/prompts tmp-prompts
+          tmp-prompts/sync.sh tmp-prompts/claude/review/backend .claude/review
+          rm -rf tmp-prompts
+
+      # 2) Claude 실행 (라벨 트리거)
       - name: Run Claude PR Action
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          timeout_minutes: "60"
-          # Optional: add custom trigger phrase (default: @claude)
-          # trigger_phrase: "/claude"
-          # Optional: add assignee trigger for issues
-          # assignee_trigger: "claude"
-          # Optional: add label trigger for issues
-          # label_trigger: "claude"
-          # Optional: add custom environment variables (YAML format)
-          # claude_env: |
-          #   NODE_ENV: test
-          #   DEBUG: true
-          #   API_URL: https://api.example.com
-          # Optional: limit the number of conversation turns
-          # max_turns: "5"
+          github_token: ${{ secrets.CLAUDE_GH_TOKEN }}
