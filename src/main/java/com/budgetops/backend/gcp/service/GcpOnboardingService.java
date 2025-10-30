@@ -1,6 +1,8 @@
 package com.budgetops.backend.gcp.service;
 
 import com.budgetops.backend.gcp.dto.*;
+import com.google.auth.oauth2.ServiceAccountCredentials;
+
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.atomic.AtomicReference;
@@ -30,6 +32,9 @@ public class GcpOnboardingService {
     }
 
     public void setServiceAccountKeyJson(ServiceAccountKeyUploadRequest request) {
+        // 파싱 유효성 점검. 실패 시 예외 발생(Controller에서 400 처리)
+        ServiceAccountCredentials credentials = GcpCredentialParser.parse(request.getServiceAccountKeyJson());
+        
         TempState s = tempStateRef.get();
         s.serviceAccountKeyJson = request.getServiceAccountKeyJson();
     }

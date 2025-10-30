@@ -5,6 +5,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.budgetops.backend.gcp.dto.BillingAccountIdRequest;
 import com.budgetops.backend.gcp.dto.BillingTestResponse;
@@ -32,8 +34,12 @@ public class GcpOnboardingController {
 
     @PostMapping("/service-account/key")
     public ResponseEntity<Void> uploadServiceAccountKey(@RequestBody ServiceAccountKeyUploadRequest request) {
-        onboardingService.setServiceAccountKeyJson(request);
-        return ResponseEntity.ok().build();
+        try {
+            onboardingService.setServiceAccountKeyJson(request);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     @PostMapping("/service-account/test")

@@ -27,6 +27,11 @@ dependencies {
     runtimeOnly 'org.postgresql:postgresql'
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     runtimeOnly("org.postgresql:postgresql:42.7.4")
+
+	// GCP 자격증명 및 API
+	implementation 'com.google.auth:google-auth-library-oauth2-http:1.22.0'
+	implementation 'com.google.cloud:google-cloud-bigquery:2.38.0'
+	implementation 'com.google.cloud:google-cloud-monitoring:3.22.0'
 }
 
 tasks.named('test') {
