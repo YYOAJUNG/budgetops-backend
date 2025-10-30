@@ -9,7 +9,7 @@ RUN chmod +x ./gradlew
 
 # 2) 프로젝트 메타만 먼저 복사해서 의존성 캐시
 COPY build.gradle settings.gradle ./
-# (있다면) gradle.properties도 같이
+# (있다면) gradle.properties도이 같이
 # COPY gradle.properties ./
 
 # Wrapper/의존성 확인(로그 자세히)

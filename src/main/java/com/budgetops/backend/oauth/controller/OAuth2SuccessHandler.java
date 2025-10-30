@@ -72,17 +72,8 @@ public class OAuth2SuccessHandler implements org.springframework.security.web.au
                 "role", user.getRole().name()
         ));
 
-        // Accept 헤더를 확인하여 JSON 응답 또는 리다이렉트 결정
-        String acceptHeader = request.getHeader("Accept");
-        if (acceptHeader != null && acceptHeader.contains("application/json")) {
-            // API 호출인 경우 JSON 응답
-            response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().write("{\"accessToken\":\"" + token + "\"}");
-        } else {
-            // 브라우저 접근인 경우 리다이렉트
-            // 테스트 페이지로 리다이렉트 (프로덕션에서는 프론트엔드 URL로 변경)
-            String redirectUrl = "/test-login.html?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
-            response.sendRedirect(redirectUrl);
-        }
+        // 프론트엔드로 토큰과 함께 리다이렉트
+        String redirectUrl = frontendRedirectUri + "?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
+        response.sendRedirect(redirectUrl);
     }
 }

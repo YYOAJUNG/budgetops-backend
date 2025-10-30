@@ -45,4 +45,4 @@ jwt:
 
 app:
   frontend:
-    redirect-uri: http://localhost:3000/auth/callback
+    redirect-uri: https://budgetops.work/auth/callback
