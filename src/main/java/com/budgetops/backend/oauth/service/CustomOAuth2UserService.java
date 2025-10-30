@@ -1,11 +1,14 @@
 package com.budgetops.backend.oauth.service;
 
+import com.budgetops.backend.oauth.entity.Role;
 import com.budgetops.backend.oauth.entity.User;
 import com.budgetops.backend.oauth.repository.UserRepository;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
+
+import java.time.Instant;
 
 @Service
 public class CustomOAuth2UserService extends DefaultOAuth2UserService {
@@ -23,9 +26,23 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         String name = oAuth2User.getAttribute("name");
         String picture = oAuth2User.getAttribute("picture");
 
-        userRepository.findByEmail(email)
-                .map(u -> { u.setName(name); u.setPicture(picture); return userRepository.save(u); })
-                .orElseGet(() -> userRepository.save(new User(email, name, picture)));
+        // 기존 사용자가 있으면 업데이트, 없으면 새로 생성
+        User user = userRepository.findByEmail(email)
+                .map(existingUser -> {
+                    // 기존 사용자 정보 업데이트
+                    existingUser.setName(name);
+                    existingUser.setPicture(picture);
+                    return userRepository.save(existingUser);
+                })
+                .orElseGet(() -> {
+                    // 새로운 사용자 생성 - role 명시적으로 설정
+                    User newUser = new User();
+                    newUser.setEmail(email);
+                    newUser.setName(name);
+                    newUser.setPicture(picture);
+                    newUser.setRole(Role.USER);  // ★ 기본 롤 필수
+                    return userRepository.save(newUser);
+                });
 
         return oAuth2User; // attributes will be used in success handler
     }

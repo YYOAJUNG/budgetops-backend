@@ -29,6 +29,7 @@ spring:
             issuer-uri: https://accounts.google.com
 server:
   port: 8080
+  forward-headers-strategy: framework
 
 management:
   endpoints:
