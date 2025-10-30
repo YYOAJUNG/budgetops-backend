@@ -43,12 +43,9 @@ public class OAuth2SuccessHandler implements org.springframework.security.web.au
         String providerId = oAuth2User.getAttribute("sub");
 
         // OAuth2AuthenticationToken에서 provider 정보 추출
-        String provider = "GOOGLE"; // 기본값
-        if (authentication instanceof OAuth2AuthenticationToken) {
-            provider = ((OAuth2AuthenticationToken) authentication)
-                    .getAuthorizedClientRegistrationId()
-                    .toUpperCase();
-        }
+        final String provider = (authentication instanceof OAuth2AuthenticationToken)
+                ? ((OAuth2AuthenticationToken) authentication).getAuthorizedClientRegistrationId().toUpperCase()
+                : "GOOGLE";
 
         // DB에 사용자 저장 또는 업데이트
         User user = userRepository.findByEmail(email)

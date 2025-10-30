@@ -13,7 +13,7 @@ COPY build.gradle settings.gradle ./
 # COPY gradle.properties ./
 
 # Wrapper/의존성 확인(로그 자세히)
-RUN ./gradlew --no-daemon --version
+RUN ./gradlew --no-daemon --vers갑ion
 RUN cat gradle/wrapper/gradle-wrapper.properties
 
 # 3) 소스 복사 후 빌드 (테스트 제외)
