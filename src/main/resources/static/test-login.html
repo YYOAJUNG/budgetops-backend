@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google OAuth 로그인 테스트</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .login-btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #4285f4;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: 500;
+            margin: 10px 0;
+        }
+        .login-btn:hover {
+            background-color: #357ae8;
+        }
+        .test-btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #34a853;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .test-btn:hover {
+            background-color: #2d8e47;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #4285f4;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .error {
+            border-left-color: #ea4335;
+        }
+        .success {
+            border-left-color: #34a853;
+        }
+        .info-box {
+            background-color: #e8f0fe;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .token-display {
+            background-color: #fff3cd;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            word-break: break-all;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Google OAuth 로그인 테스트</h1>
+
+        <div class="info-box">
+            <strong>테스트 순서:</strong><br>
+            1. "Google 로그인" 버튼 클릭<br>
+            2. Google 계정으로 로그인<br>
+            3. 로그인 성공 시 JWT 토큰 확인<br>
+            4. 토큰으로 인증이 필요한 API 테스트
+        </div>
+
+        <a href="/oauth2/authorization/google" class="login-btn">🔑 Google 로그인</a>
+
+        <h2>📊 현재 상태</h2>
+        <div id="status" class="result">
+            토큰 없음 - 로그인이 필요합니다.
+        </div>
+
+        <h2>🧪 API 테스트</h2>
+        <button class="test-btn" onclick="testPublicEndpoint()">Public API 테스트</button>
+        <button class="test-btn" onclick="testAuthenticatedEndpoint()">인증 필요 API 테스트 (/api/me)</button>
+        <button class="test-btn" onclick="clearToken()">토큰 삭제</button>
+
+        <h3>수동 토큰 입력 (테스트용)</h3>
+        <input type="text" id="manualToken" placeholder="JWT 토큰을 여기에 붙여넣으세요">
+        <button class="test-btn" onclick="saveManualToken()">토큰 저장</button>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        // URL 파라미터에서 토큰 추출
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+
+        if (token) {
+            localStorage.setItem('accessToken', token);
+            // URL에서 토큰 제거
+            window.history.replaceState({}, document.title, window.location.pathname);
+            showResult('✅ 로그인 성공! 토큰이 저장되었습니다.', 'success');
+        }
+
+        // 페이지 로드 시 상태 확인
+        checkStatus();
+
+        function checkStatus() {
+            const savedToken = localStorage.getItem('accessToken');
+            const statusDiv = document.getElementById('status');
+
+            if (savedToken) {
+                statusDiv.className = 'result success';
+                statusDiv.textContent = '✅ 로그인됨\n\n토큰: ' + savedToken.substring(0, 50) + '...';
+            } else {
+                statusDiv.className = 'result';
+                statusDiv.textContent = '❌ 로그인 필요';
+            }
+        }
+
+        function testPublicEndpoint() {
+            fetch('/api/public')
+                .then(response => response.json())
+                .then(data => {
+                    showResult('✅ Public API 응답:\n\n' + JSON.stringify(data, null, 2), 'success');
+                })
+                .catch(error => {
+                    showResult('❌ 오류:\n\n' + error.message, 'error');
+                });
+        }
+
+        function testAuthenticatedEndpoint() {
+            const token = localStorage.getItem('accessToken');
+
+            if (!token) {
+                showResult('❌ 토큰이 없습니다. 먼저 로그인하세요.', 'error');
+                return;
+            }
+
+            fetch('/api/me', {
+                headers: {
+                    'Authorization': 'Bearer ' + token
+                }
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    showResult('✅ 인증 성공! 사용자 정보:\n\n' + JSON.stringify(data, null, 2), 'success');
+                })
+                .catch(error => {
+                    showResult('❌ 인증 실패:\n\n' + error.message, 'error');
+                });
+        }
+
+        function clearToken() {
+            localStorage.removeItem('accessToken');
+            checkStatus();
+            showResult('🗑️ 토큰이 삭제되었습니다.', 'success');
+        }
+
+        function saveManualToken() {
+            const manualToken = document.getElementById('manualToken').value.trim();
+            if (manualToken) {
+                localStorage.setItem('accessToken', manualToken);
+                checkStatus();
+                showResult('✅ 토큰이 저장되었습니다.', 'success');
+                document.getElementById('manualToken').value = '';
+            } else {
+                showResult('❌ 토큰을 입력하세요.', 'error');
+            }
+        }
+
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = 'result ' + type;
+            resultDiv.textContent = message;
+        }
+    </script>
+</body>
+</html>
