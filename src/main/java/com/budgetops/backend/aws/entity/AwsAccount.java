@@ -1,38 +1,32 @@
 package com.budgetops.backend.aws.entity;
 
+import com.budgetops.backend.aws.support.CryptoStringConverter;
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
-@Table(name = "aws_accounts")
+@Table(name = "aws_account", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_aws_access_key_id", columnNames = "accessKeyId")
+})
 @Getter
 @Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
 public class AwsAccount {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true, nullable = false)
-    private String accountId;
+    private String name;
+    private String defaultRegion;
 
-    @Column(nullable = false)
-    private String accountName;
-
-    @Column(nullable = false)
-    private String region;
-
-    @Column(nullable = false)
+    @Column(nullable = false, length = 32)
     private String accessKeyId;
 
-    @Column(nullable = false)
-    private String secretAccessKey;
+    // DB에는 암호문만 저장
+    @Convert(converter = CryptoStringConverter.class)
+    @Column(nullable = false, length = 2048)
+    private String secretKeyEnc;
 
-    @Column
-    private String description;
-
-    @Column(nullable = false)
-    private Boolean isActive = true;
+    private String secretKeyLast4;   // 마스킹용
+    private Boolean active = Boolean.TRUE; // 등록 즉시 활성(또는 UNVERIFIED 대체 가능)
 }
