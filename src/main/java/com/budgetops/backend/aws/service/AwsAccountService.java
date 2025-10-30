@@ -4,6 +4,7 @@ import com.budgetops.backend.aws.dto.AwsAccountCreateRequest;
 import com.budgetops.backend.aws.entity.AwsAccount;
 import com.budgetops.backend.aws.repository.AwsAccountRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
