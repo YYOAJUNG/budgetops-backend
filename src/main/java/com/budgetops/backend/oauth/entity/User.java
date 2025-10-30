@@ -46,6 +46,12 @@ public class User {
 
     private String picture;
 
+    @Column(length = 50)
+    private String provider;  // GOOGLE, KAKAO 등
+
+    @Column(name = "provider_id")
+    private String providerId;  // OAuth provider의 고유 ID
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role = Role.USER;
@@ -53,12 +59,19 @@ public class User {
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 
+    @Column(name = "updated_at")
+    private Instant updatedAt;
+
+    @Column(name = "profile_image")
+    private String profileImage;
+
     public User() {}
 
     public User(String email, String name, String picture) {
         this.email = email;
         this.name = name;
         this.picture = picture;
+        this.provider = "GOOGLE";  // 기본값
     }
 
     // getters and setters
@@ -69,7 +82,16 @@ public class User {
     public void setName(String name) { this.name = name; }
     public String getPicture() { return picture; }
     public void setPicture(String picture) { this.picture = picture; }
+    public String getProvider() { return provider; }
+    public void setProvider(String provider) { this.provider = provider; }
+    public String getProviderId() { return providerId; }
+    public void setProviderId(String providerId) { this.providerId = providerId; }
     public Role getRole() { return role; }
     public void setRole(Role role) { this.role = role; }
     public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public Instant getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+    public String getProfileImage() { return profileImage; }
+    public void setProfileImage(String profileImage) { this.profileImage = profileImage; }
 }

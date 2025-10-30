@@ -25,6 +25,8 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         String email = oAuth2User.getAttribute("email");
         String name = oAuth2User.getAttribute("name");
         String picture = oAuth2User.getAttribute("picture");
+        String providerId = oAuth2User.getAttribute("sub"); // Google의 고유 ID
+        String provider = userRequest.getClientRegistration().getRegistrationId().toUpperCase(); // GOOGLE
 
         // 기존 사용자가 있으면 업데이트, 없으면 새로 생성
         User user = userRepository.findByEmail(email)
@@ -32,15 +34,18 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                     // 기존 사용자 정보 업데이트
                     existingUser.setName(name);
                     existingUser.setPicture(picture);
+                    existingUser.setUpdatedAt(Instant.now());
                     return userRepository.save(existingUser);
                 })
                 .orElseGet(() -> {
-                    // 새로운 사용자 생성 - role 명시적으로 설정
+                    // 새로운 사용자 생성 - role과 provider 명시적으로 설정
                     User newUser = new User();
                     newUser.setEmail(email);
                     newUser.setName(name);
                     newUser.setPicture(picture);
-                    newUser.setRole(Role.USER);  // ★ 기본 롤 필수
+                    newUser.setProvider(provider);        // GOOGLE
+                    newUser.setProviderId(providerId);    // Google sub
+                    newUser.setRole(Role.USER);           // 기본 롤
                     return userRepository.save(newUser);
                 });
 
