@@ -40,3 +40,4 @@ out/
 .env.prod
 
 .DS_Store
+gcp_test.json
