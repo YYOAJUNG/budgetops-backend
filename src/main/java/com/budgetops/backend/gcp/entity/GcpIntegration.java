@@ -9,6 +9,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Convert;
+import com.budgetops.backend.aws.support.CryptoStringConverter;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.data.annotation.CreatedDate;
@@ -46,8 +48,9 @@ public class GcpIntegration {
     @Column(length = 32)
     private String billingExportLocation;
 
-    @Column(length = 512)
-    private String secretReference;
+    @Convert(converter = CryptoStringConverter.class)
+    @Column(columnDefinition = "TEXT")
+    private String encryptedServiceAccountKey;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)
