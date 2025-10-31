@@ -50,8 +50,12 @@ public class GcpOnboardingController {
 
     @PostMapping("/billing-account/id")
     public ResponseEntity<Void> setBillingAccountId(@RequestBody BillingAccountIdRequest request) {
-        onboardingService.setBillingAccountId(request);
-        return ResponseEntity.ok().build();
+        try {
+            onboardingService.setBillingAccountId(request);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     @PostMapping("/billing-account/test")

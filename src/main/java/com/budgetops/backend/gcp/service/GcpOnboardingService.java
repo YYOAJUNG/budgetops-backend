@@ -6,6 +6,7 @@ import com.google.auth.oauth2.ServiceAccountCredentials;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 
 @Service
 public class GcpOnboardingService {
@@ -45,8 +46,19 @@ public class GcpOnboardingService {
     }
 
     public void setBillingAccountId(BillingAccountIdRequest request) {
+        String billingIdRaw = request.getBillingAccountId();
+        if (billingIdRaw == null) {
+            throw new IllegalArgumentException("잘못된 결제 계정 ID 형식입니다. 예) EXAMPL-123456-ABC123");
+        }
+        String billingId = billingIdRaw.trim().toUpperCase();
+        // 형식 예: EXAMPL-123456-ABC123
+        Pattern pattern = Pattern.compile("^[A-Z0-9]{6}-[A-Z0-9]{6}-[A-Z0-9]{6}$");
+        if (!pattern.matcher(billingId).matches()) {
+            throw new IllegalArgumentException("잘못된 결제 계정 ID 형식입니다. 예) EXAMPL-123456-ABC123");
+        }
+
         TempState s = tempStateRef.get();
-        s.billingAccountId = request.getBillingAccountId();
+        s.billingAccountId = billingId;
     }
 
     public BillingTestResponse testBilling() {
