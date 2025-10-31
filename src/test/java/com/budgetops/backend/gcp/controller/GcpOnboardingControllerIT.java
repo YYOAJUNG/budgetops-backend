@@ -95,6 +95,67 @@ class GcpOnboardingControllerIT {
                 )));
     }
 
+    @Test
+    @DisplayName("[IT] /billing-account/test verifies dataset and latest table with real GCP (conditionally)")
+    void billingTest_withRealGcp_conditionally() throws Exception {
+        String runIt = System.getenv("RUN_GCP_IT");
+        Assumptions.assumeTrue("true".equalsIgnoreCase(runIt),
+                "RUN_GCP_IT!=true -> integration test skipped");
+
+        String keyFilePath = System.getenv("SERVICE_ACCOUNT_KEY_FILE");
+        Assumptions.assumeTrue(keyFilePath != null && !keyFilePath.isBlank(),
+                "SERVICE_ACCOUNT_KEY_FILE not set -> integration test skipped");
+
+        String billingAccountId = System.getenv("BILLING_ACCOUNT_ID");
+        Assumptions.assumeTrue(billingAccountId != null && !billingAccountId.isBlank(),
+                "BILLING_ACCOUNT_ID not set -> integration test skipped");
+
+        Path path = Path.of(keyFilePath);
+        Assumptions.assumeTrue(Files.exists(path) && Files.isReadable(path),
+                "SERVICE_ACCOUNT_KEY_FILE not found/readable -> integration test skipped");
+
+        // Read JSON and extract client_email to use as serviceAccountId
+        String keyJson = readAll(path);
+        String serviceAccountEmail = extractClientEmail(keyJson);
+        Assumptions.assumeTrue(serviceAccountEmail != null && !serviceAccountEmail.isBlank(),
+                "client_email not found in key json -> integration test skipped");
+
+        // 1) set service account id
+        mockMvc.perform(post("/gcp/onboarding/service-account/id")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{" +
+                                "\"serviceAccountId\":\"" + escapeJson(serviceAccountEmail) + "\"}"))
+                .andExpect(status().isOk());
+
+        // 2) upload service account key json
+        String bodyWithEmbeddedJson = objectMapper.createObjectNode()
+                .put("serviceAccountKeyJson", keyJson)
+                .toString();
+        mockMvc.perform(post("/gcp/onboarding/service-account/key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyWithEmbeddedJson))
+                .andExpect(status().isOk());
+
+        // 3) set billing account id
+        String billingBody = objectMapper.createObjectNode()
+                .put("billingAccountId", billingAccountId)
+                .toString();
+        mockMvc.perform(post("/gcp/onboarding/billing-account/id")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(billingBody))
+                .andExpect(status().isOk());
+
+        // 4) call billing test endpoint; require real success
+        mockMvc.perform(post("/gcp/onboarding/billing-account/test")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andDo(print())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.datasetExists").value(true))
+                .andExpect(jsonPath("$.latestTable").isString())
+                .andExpect(jsonPath("$.latestTable").isNotEmpty());
+    }
+
     private static String readAll(Path p) throws IOException {
         return Files.readString(p);
     }
