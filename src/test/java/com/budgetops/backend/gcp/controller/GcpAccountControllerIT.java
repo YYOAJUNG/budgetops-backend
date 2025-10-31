@@ -31,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-class GcpOnboardingControllerIT {
+class GcpAccountControllerIT {
 
     @Autowired
     private MockMvc mockMvc;
@@ -60,7 +60,7 @@ class GcpOnboardingControllerIT {
                 "client_email not found in key json -> integration test skipped");
 
         // 1) set service account id
-        mockMvc.perform(post("/gcp/onboarding/service-account/id")
+        mockMvc.perform(post("/api/gcp/accounts/service-account/id")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{" +
                                 "\"serviceAccountId\":\"" + escapeJson(serviceAccountEmail) + "\"}"))
@@ -72,13 +72,13 @@ class GcpOnboardingControllerIT {
                 .put("serviceAccountKeyJson", keyJson)
                 .toString();
 
-        mockMvc.perform(post("/gcp/onboarding/service-account/key")
+        mockMvc.perform(post("/api/gcp/accounts/service-account/key")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(bodyWithEmbeddedJson))
                 .andExpect(status().isOk());
 
         // 3) call test endpoint; require real GCP success (strict)
-        mockMvc.perform(post("/gcp/onboarding/service-account/test")
+        mockMvc.perform(post("/api/gcp/accounts/service-account/test")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andDo(print())
                 .andExpect(status().isOk())
@@ -121,7 +121,7 @@ class GcpOnboardingControllerIT {
                 "client_email not found in key json -> integration test skipped");
 
         // 1) set service account id
-        mockMvc.perform(post("/gcp/onboarding/service-account/id")
+        mockMvc.perform(post("/api/gcp/accounts/service-account/id")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{" +
                                 "\"serviceAccountId\":\"" + escapeJson(serviceAccountEmail) + "\"}"))
@@ -131,7 +131,7 @@ class GcpOnboardingControllerIT {
         String bodyWithEmbeddedJson = objectMapper.createObjectNode()
                 .put("serviceAccountKeyJson", keyJson)
                 .toString();
-        mockMvc.perform(post("/gcp/onboarding/service-account/key")
+        mockMvc.perform(post("/api/gcp/accounts/service-account/key")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(bodyWithEmbeddedJson))
                 .andExpect(status().isOk());
@@ -140,13 +140,13 @@ class GcpOnboardingControllerIT {
         String billingBody = objectMapper.createObjectNode()
                 .put("billingAccountId", billingAccountId)
                 .toString();
-        mockMvc.perform(post("/gcp/onboarding/billing-account/id")
+        mockMvc.perform(post("/api/gcp/accounts/billing-account/id")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(billingBody))
                 .andExpect(status().isOk());
 
         // 4) call billing test endpoint; require real success
-        mockMvc.perform(post("/gcp/onboarding/billing-account/test")
+        mockMvc.perform(post("/api/gcp/accounts/billing-account/test")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andDo(print())
                 .andExpect(status().isOk())
