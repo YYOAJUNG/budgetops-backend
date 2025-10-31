@@ -12,10 +12,9 @@ import com.google.api.gax.paging.Page;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
-import java.util.Comparator;
 
 @Service
-public class GcpBillingVerifier {
+public class GcpBillingAccountVerifier {
 
     private static final String DATASET_NAME = "billing_export_dataset";
 

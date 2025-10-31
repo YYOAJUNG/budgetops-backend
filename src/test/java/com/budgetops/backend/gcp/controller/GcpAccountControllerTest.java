@@ -2,7 +2,7 @@ package com.budgetops.backend.gcp.controller;
 
 import com.budgetops.backend.gcp.dto.ServiceAccountIdRequest;
 import com.budgetops.backend.gcp.dto.ServiceAccountKeyUploadRequest;
-import com.budgetops.backend.gcp.service.GcpOnboardingService;
+import com.budgetops.backend.gcp.service.GcpAccountService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatcher;
@@ -18,21 +18,21 @@ import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(GcpOnboardingController.class)
-class GcpOnboardingControllerTest {
+@WebMvcTest(GcpAccountController.class)
+class GcpAccountControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
     @MockBean
-    private GcpOnboardingService onboardingService;
+    private GcpAccountService onboardingService;
 
     @Test
-    @DisplayName("POST /gcp/onboarding/service-account/id returns 200 and delegates to service")
+    @DisplayName("POST /api/gcp/accounts/service-account/id returns 200 and delegates to service")
     void setServiceAccountId_success() throws Exception {
         String body = "{\"serviceAccountId\":\"sa-123@project.iam.gserviceaccount.com\"}";
 
-        mockMvc.perform(post("/gcp/onboarding/service-account/id")
+        mockMvc.perform(post("/api/gcp/accounts/service-account/id")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk());
@@ -43,11 +43,11 @@ class GcpOnboardingControllerTest {
     }
 
     @Test
-    @DisplayName("POST /gcp/onboarding/service-account/key returns 200 when service succeeds")
+    @DisplayName("POST /api/gcp/accounts/service-account/key returns 200 when service succeeds")
     void uploadServiceAccountKey_success() throws Exception {
         String body = "{\"serviceAccountKeyJson\":\"{\\\"type\\\":\\\"service_account\\\"}\"}";
 
-        mockMvc.perform(post("/gcp/onboarding/service-account/key")
+        mockMvc.perform(post("/api/gcp/accounts/service-account/key")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk());
@@ -58,7 +58,7 @@ class GcpOnboardingControllerTest {
     }
 
     @Test
-    @DisplayName("POST /gcp/onboarding/service-account/key returns 400 when IllegalArgumentException thrown")
+    @DisplayName("POST /api/gcp/accounts/service-account/key returns 400 when IllegalArgumentException thrown")
     void uploadServiceAccountKey_badRequest_onIllegalArgument() throws Exception {
         String invalidJson = "{\"type\":\"not_service_account\"}";
 
@@ -70,7 +70,7 @@ class GcpOnboardingControllerTest {
 
         String body = "{\"serviceAccountKeyJson\":\"" + invalidJson + "\"}";
 
-        mockMvc.perform(post("/gcp/onboarding/service-account/key")
+        mockMvc.perform(post("/api/gcp/accounts/service-account/key")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest());

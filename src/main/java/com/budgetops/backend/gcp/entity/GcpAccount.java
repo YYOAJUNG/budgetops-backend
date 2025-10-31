@@ -3,8 +3,6 @@ package com.budgetops.backend.gcp.entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -14,7 +12,6 @@ import com.budgetops.backend.aws.support.CryptoStringConverter;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
@@ -22,9 +19,9 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
-@Table(name = "gcp_integration")
+@Table(name = "gcp_account")
 @EntityListeners(AuditingEntityListener.class)
-public class GcpIntegration {
+public class GcpAccount {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

@@ -14,15 +14,15 @@ import com.budgetops.backend.gcp.dto.SaveIntegrationResponse;
 import com.budgetops.backend.gcp.dto.ServiceAccountIdRequest;
 import com.budgetops.backend.gcp.dto.ServiceAccountKeyUploadRequest;
 import com.budgetops.backend.gcp.dto.ServiceAccountTestResponse;
-import com.budgetops.backend.gcp.service.GcpOnboardingService;
+import com.budgetops.backend.gcp.service.GcpAccountService;
 
 @RestController
-@RequestMapping("/gcp/onboarding")
-public class GcpOnboardingController {
+@RequestMapping("/api/gcp/accounts")
+public class GcpAccountController {
 
-    private final GcpOnboardingService onboardingService;
+    private final GcpAccountService onboardingService;
 
-    public GcpOnboardingController(GcpOnboardingService onboardingService) {
+    public GcpAccountController(GcpAccountService onboardingService) {
         this.onboardingService = onboardingService;
     }
 
