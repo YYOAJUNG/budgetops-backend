@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Integration-style test for /gcp/onboarding/service-account/test that can run
+ * Integration-style test for api/gcp/accounts/service-account/test that can run
  * against a real GCP service account JSON. This test is SKIPPED by default and
  * only runs when both conditions are met:
  * - Environment variable RUN_GCP_IT = "true"

@@ -20,22 +20,22 @@ import com.budgetops.backend.gcp.service.GcpAccountService;
 @RequestMapping("/api/gcp/accounts")
 public class GcpAccountController {
 
-    private final GcpAccountService onboardingService;
+    private final GcpAccountService accountService;
 
-    public GcpAccountController(GcpAccountService onboardingService) {
-        this.onboardingService = onboardingService;
+    public GcpAccountController(GcpAccountService accountService) {
+        this.accountService = accountService;
     }
 
     @PostMapping("/service-account/id")
     public ResponseEntity<Void> setServiceAccountId(@RequestBody ServiceAccountIdRequest request) {
-        onboardingService.setServiceAccountId(request);
+        accountService.setServiceAccountId(request);
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/service-account/key")
     public ResponseEntity<Void> uploadServiceAccountKey(@RequestBody ServiceAccountKeyUploadRequest request) {
         try {
-            onboardingService.setServiceAccountKeyJson(request);
+            accountService.setServiceAccountKeyJson(request);
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
@@ -44,14 +44,14 @@ public class GcpAccountController {
 
     @PostMapping("/service-account/test")
     public ResponseEntity<ServiceAccountTestResponse> testServiceAccount() {
-        ServiceAccountTestResponse result = onboardingService.testServiceAccount();
+        ServiceAccountTestResponse result = accountService.testServiceAccount();
         return ResponseEntity.ok(result);
     }
 
     @PostMapping("/billing-account/id")
     public ResponseEntity<Void> setBillingAccountId(@RequestBody BillingAccountIdRequest request) {
         try {
-            onboardingService.setBillingAccountId(request);
+            accountService.setBillingAccountId(request);
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
@@ -60,13 +60,13 @@ public class GcpAccountController {
 
     @PostMapping("/billing-account/test")
     public ResponseEntity<BillingTestResponse> testBilling() {
-        BillingTestResponse result = onboardingService.testBilling();
+        BillingTestResponse result = accountService.testBilling();
         return ResponseEntity.ok(result);
     }
 
     @PostMapping
-    public ResponseEntity<SaveIntegrationResponse> completeOnboarding() {
-        SaveIntegrationResponse result = onboardingService.saveIntegration();
+    public ResponseEntity<SaveIntegrationResponse> completeIntegration() {
+        SaveIntegrationResponse result = accountService.saveIntegration();
         return ResponseEntity.ok(result);
     }
 }

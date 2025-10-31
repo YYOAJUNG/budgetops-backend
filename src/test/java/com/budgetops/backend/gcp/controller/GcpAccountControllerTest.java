@@ -25,7 +25,7 @@ class GcpAccountControllerTest {
     private MockMvc mockMvc;
 
     @MockBean
-    private GcpAccountService onboardingService;
+    private GcpAccountService accountService;
 
     @Test
     @DisplayName("POST /api/gcp/accounts/service-account/id returns 200 and delegates to service")
@@ -37,7 +37,7 @@ class GcpAccountControllerTest {
                         .content(body))
                 .andExpect(status().isOk());
 
-        verify(onboardingService).setServiceAccountId(argThat((ArgumentMatcher<ServiceAccountIdRequest>) req ->
+        verify(accountService).setServiceAccountId(argThat((ArgumentMatcher<ServiceAccountIdRequest>) req ->
                 req != null && "sa-123@project.iam.gserviceaccount.com".equals(req.getServiceAccountId())
         ));
     }
@@ -52,7 +52,7 @@ class GcpAccountControllerTest {
                         .content(body))
                 .andExpect(status().isOk());
 
-        verify(onboardingService).setServiceAccountKeyJson(argThat((ArgumentMatcher<ServiceAccountKeyUploadRequest>) req ->
+        verify(accountService).setServiceAccountKeyJson(argThat((ArgumentMatcher<ServiceAccountKeyUploadRequest>) req ->
                 req != null && "{\"type\":\"service_account\"}".equals(req.getServiceAccountKeyJson())
         ));
     }
@@ -63,7 +63,7 @@ class GcpAccountControllerTest {
         String invalidJson = "{\"type\":\"not_service_account\"}";
 
         doThrow(new IllegalArgumentException("invalid key"))
-                .when(onboardingService)
+                .when(accountService)
                 .setServiceAccountKeyJson(argThat((ArgumentMatcher<ServiceAccountKeyUploadRequest>) req ->
                         req != null && invalidJson.equals(req.getServiceAccountKeyJson())
                 ));
