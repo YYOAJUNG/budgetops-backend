@@ -35,9 +35,10 @@ dependencies {
     testAnnotationProcessor 'org.projectlombok:lombok:1.18.34'
 
 	// GCP 자격증명 및 API
-    implementation 'com.google.auth:google-auth-library-oauth2-http:1.22.0'
+	implementation 'com.google.auth:google-auth-library-oauth2-http:1.22.0'
 	implementation 'com.google.cloud:google-cloud-bigquery:2.38.0'
 	implementation 'com.google.cloud:google-cloud-monitoring:3.22.0'
+	implementation 'com.google.cloud:google-cloud-iam:2.29.0'
 }
 
 tasks.named('test') {
