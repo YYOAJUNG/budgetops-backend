@@ -38,6 +38,12 @@ dependencies {
 
 	// H2 (local 프로필에서 사용)
 	runtimeOnly 'com.h2database:h2:2.3.232'
+  
+  // GCP 자격증명 및 API
+	implementation 'com.google.auth:google-auth-library-oauth2-http:1.22.0'
+	implementation 'com.google.cloud:google-cloud-bigquery:2.38.0'
+	implementation 'com.google.cloud:google-cloud-monitoring:3.22.0'
+  implementation 'com.google.apis:google-api-services-iam:v1-rev20251010-2.0.0'
 }
 
 tasks.named('test') {

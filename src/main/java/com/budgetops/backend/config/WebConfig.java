@@ -1,5 +1,5 @@
 
-package com.budgetops.backend;
+package com.budgetops.backend.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
