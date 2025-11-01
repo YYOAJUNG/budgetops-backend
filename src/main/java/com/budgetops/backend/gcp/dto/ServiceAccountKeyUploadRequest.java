@@ -1,15 +1,12 @@
 package com.budgetops.backend.gcp.dto;
 
+import lombok.Getter;
+import lombok.Setter;
+
+@Getter
+@Setter
 public class ServiceAccountKeyUploadRequest {
     private String serviceAccountKeyJson;
-
-    public String getServiceAccountKeyJson() {
-        return serviceAccountKeyJson;
-    }
-
-    public void setServiceAccountKeyJson(String serviceAccountKeyJson) {
-        this.serviceAccountKeyJson = serviceAccountKeyJson;
-    }
 }
 
 

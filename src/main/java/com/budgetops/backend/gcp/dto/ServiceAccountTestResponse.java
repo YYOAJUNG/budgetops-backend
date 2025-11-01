@@ -1,7 +1,11 @@
 package com.budgetops.backend.gcp.dto;
 
 import java.util.List;
+import lombok.Getter;
+import lombok.Setter;
 
+@Getter
+@Setter
 public class ServiceAccountTestResponse {
     private boolean ok;
     private List<String> missingRoles;
@@ -12,51 +16,6 @@ public class ServiceAccountTestResponse {
 
     public boolean isOk() {
         return ok;
-    }
-
-    public void setOk(boolean ok) {
-        this.ok = ok;
-    }
-
-    public List<String> getMissingRoles() {
-        return missingRoles;
-    }
-
-    public void setMissingRoles(List<String> missingRoles) {
-        this.missingRoles = missingRoles;
-    }
-
-    public String getMessage() {
-        return message;
-    }
-
-    public void setMessage(String message) {
-        this.message = message;
-    }
-
-    // optional
-    public Integer getHttpStatus() {
-        return httpStatus;
-    }
-
-    public void setHttpStatus(Integer httpStatus) {
-        this.httpStatus = httpStatus;
-    }
-
-    public String getDebugBodySnippet() {
-        return debugBodySnippet;
-    }
-
-    public void setDebugBodySnippet(String debugBodySnippet) {
-        this.debugBodySnippet = debugBodySnippet;
-    }
-
-    public List<String> getGrantedPermissions() {
-        return grantedPermissions;
-    }
-
-    public void setGrantedPermissions(List<String> grantedPermissions) {
-        this.grantedPermissions = grantedPermissions;
     }
 }
 
