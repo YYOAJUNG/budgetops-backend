@@ -12,7 +12,6 @@ import com.google.cloud.bigquery.DatasetId;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.atomic.AtomicReference;
-import java.time.Instant;
 import java.util.regex.Pattern;
 
 @Service
@@ -120,7 +119,9 @@ public class GcpAccountService {
             tempStateRef.set(new TempState());
 
             res.setOk(true);
-            res.setIntegrationId(String.valueOf(saved.getId()));
+            res.setId(saved.getId());
+            res.setServiceAccountId(saved.getServiceAccountId());
+            res.setProjectId(saved.getProjectId());
             res.setMessage("Integration saved");
             return res;
         } catch (IllegalArgumentException e) {
