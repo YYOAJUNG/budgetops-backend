@@ -15,6 +15,11 @@ spring:
   application:
     name: budgetops-backend
 
+app:
+  crypto:
+    # 환경변수 APP_CRED_KEY에서 주입. 로컬에서 export APP_CRED_KEY=... 로 설정
+    key: ${APP_CRED_KEY:}
+
 server:
   port: 8080
 

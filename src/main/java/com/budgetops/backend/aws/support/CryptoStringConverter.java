@@ -52,5 +52,3 @@ public class CryptoStringConverter implements AttributeConverter<String, String>
 }
 
 
-
-
