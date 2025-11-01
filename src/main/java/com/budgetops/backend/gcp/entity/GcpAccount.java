@@ -52,8 +52,6 @@ public class GcpAccount {
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
-
-    private Instant lastVerifiedAt;
 }
 
 

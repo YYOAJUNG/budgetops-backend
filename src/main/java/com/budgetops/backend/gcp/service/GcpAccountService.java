@@ -113,7 +113,6 @@ public class GcpAccountService {
             entity.setBillingExportDatasetId(datasetIdStr);
             entity.setBillingExportLocation(datasetLocation);
             entity.setEncryptedServiceAccountKey(s.serviceAccountKeyJson);
-            entity.setLastVerifiedAt(Instant.now());
 
             GcpAccount saved = integrationRepository.save(entity);
 
