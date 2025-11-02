@@ -15,7 +15,7 @@ public class CorsConfig {
         CorsConfiguration cfg = new CorsConfiguration();
         // 개발 및 프로덕션 환경 모두 지원
         cfg.setAllowedOrigins(List.of(
-                "http://localhost:3000",      // 프론트엔드 개발 서버
+                "http://localhost:3001",      // 프론트엔드 개발 서버
                 "http://localhost:5173",      // Vite 개발 서버
                 "https://budgetops.work"      // 프로덕션 도메인
         ));

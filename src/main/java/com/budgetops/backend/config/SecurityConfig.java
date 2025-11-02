@@ -48,7 +48,7 @@ public class SecurityConfig {
         // Spring이 자동으로 CorsConfig의 Bean을 주입합니다
         org.springframework.web.cors.CorsConfiguration cfg = new org.springframework.web.cors.CorsConfiguration();
         cfg.setAllowedOrigins(java.util.List.of(
-                "http://localhost:3000",
+                "http://localhost:3001",
                 "http://localhost:5173",
                 "https://budgetops.work"
         ));
