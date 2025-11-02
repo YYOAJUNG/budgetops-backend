@@ -27,11 +27,12 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                //.sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/", "/health", "/error", "/oauth2/**", "/login/**").permitAll()
-                        .requestMatchers("/api/me").authenticated()
-                        .anyRequest().permitAll()
+                        .requestMatchers("/", "/health", "/error", "/oauth2/**", "/login/**", "/actuator/**").permitAll()
+//                        .requestMatchers("/api/me").authenticated()
+//                        .anyRequest().permitAll()
+                        .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth -> oauth
                         .userInfoEndpoint(u -> u.userService(oAuth2UserService))
