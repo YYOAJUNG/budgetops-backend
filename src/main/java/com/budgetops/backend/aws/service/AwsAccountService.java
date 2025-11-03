@@ -56,6 +56,16 @@ public class AwsAccountService {
         return accountRepo.findById(accountId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "계정을 찾을 수 없습니다."));
     }
+
+    @Transactional
+    public void deactivateAccount(Long accountId) {
+        AwsAccount account = accountRepo.findById(accountId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "계정을 찾을 수 없습니다."));
+        if (Boolean.TRUE.equals(account.getActive())) {
+            account.setActive(Boolean.FALSE);
+            accountRepo.save(account);
+        }
+    }
 }
 
 

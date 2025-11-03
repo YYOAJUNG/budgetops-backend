@@ -45,6 +45,13 @@ public class AwsAccountController {
         return ResponseEntity.ok(toResp(a));
     }
 
+    // 계정 비활성(삭제 대용): 참조 무결성 보존을 위해 active=false 처리
+    @DeleteMapping("/{accountId}")
+    public ResponseEntity<Void> deleteAccount(@PathVariable Long accountId) {
+        service.deactivateAccount(accountId);
+        return ResponseEntity.noContent().build();
+    }
+
     private AwsAccountResponse toResp(AwsAccount a) {
         return AwsAccountResponse.builder()
                 .id(a.getId())
