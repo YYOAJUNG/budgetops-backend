@@ -22,11 +22,28 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+	implementation 'software.amazon.awssdk:sts:2.25.65'
+	implementation 'software.amazon.awssdk:ec2:2.25.65'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-    runtimeOnly 'org.postgresql:postgresql'
-    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-    runtimeOnly("org.postgresql:postgresql:42.7.4")
+	runtimeOnly("org.postgresql:postgresql:42.7.4")
+
+	// Lombok
+	compileOnly 'org.projectlombok:lombok:1.18.34'
+	annotationProcessor 'org.projectlombok:lombok:1.18.34'
+	testCompileOnly 'org.projectlombok:lombok:1.18.34'
+	testAnnotationProcessor 'org.projectlombok:lombok:1.18.34'
+
+	// H2 (local 프로필에서 사용)
+	runtimeOnly 'com.h2database:h2:2.3.232'
+  
+  // GCP 자격증명 및 API
+	implementation 'com.google.auth:google-auth-library-oauth2-http:1.22.0'
+	implementation 'com.google.cloud:google-cloud-bigquery:2.38.0'
+	implementation 'com.google.cloud:google-cloud-monitoring:3.22.0'
+  implementation 'com.google.apis:google-api-services-iam:v1-rev20251010-2.0.0'
 }
 
 tasks.named('test') {
