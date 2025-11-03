@@ -1,4 +1,6 @@
 spring:
+  main:
+    allow-bean-definition-overriding: true
   datasource:
     url: jdbc:h2:mem:budgetops;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     driver-class-name: org.h2.Driver
@@ -20,4 +22,12 @@ server:
 app:
   crypto:
     key: ${APP_CRED_KEY:}
+  aws:
+    validate: false
+
+springdoc:
+  api-docs:
+    enabled: true
+  packages-to-scan: com.budgetops.backend
+  paths-to-match: /api/**
 
