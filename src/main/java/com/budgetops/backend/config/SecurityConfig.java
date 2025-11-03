@@ -50,7 +50,8 @@ public class SecurityConfig {
         cfg.setAllowedOrigins(java.util.List.of(
                 "http://localhost:3001",
                 "http://localhost:5173",
-                "https://budgetops.work"
+                "https://budgetops.work",
+                "https://hershel-ungored-eufemia.ngrok-free.dev"
         ));
         cfg.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(java.util.List.of("*"));

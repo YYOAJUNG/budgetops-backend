@@ -47,4 +47,5 @@ jwt:
 
 app:
   frontend:
-    redirect-uri: https://localhost:3001/auth/callback
+    redirect-uri:  https://hershel-ungored-eufemia.ngrok-free.dev
+    #https://localhost:3001/auth/callback
