@@ -28,9 +28,7 @@ dependencies {
 	implementation 'software.amazon.awssdk:ec2:2.25.65'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-    runtimeOnly 'org.postgresql:postgresql'
-    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-    runtimeOnly("org.postgresql:postgresql:42.7.4")
+	runtimeOnly("org.postgresql:postgresql:42.7.4")
 
 	// Lombok
 	compileOnly 'org.projectlombok:lombok:1.18.34'
