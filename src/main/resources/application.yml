@@ -1,14 +1,21 @@
 spring:
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/budgetops}
-    username: ${SPRING_DATASOURCE_USERNAME:budgetops}
-    password: ${SPRING_DATASOURCE_PASSWORD:secret}
+    # DB 없이 개발: H2 인메모리 DB 사용
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:testdb}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    driver-class-name: org.h2.Driver
+  h2:
+    console:
+      enabled: true  # H2 콘솔 활성화 (http://localhost:8080/h2-console)
   jpa:
     hibernate:
-      ddl-auto: update   # 개발용
+      ddl-auto: create-drop   # 개발용: 시작할 때 테이블 생성, 종료할 때 삭제
     properties:
       hibernate:
         format_sql: true
+        dialect: org.hibernate.dialect.H2Dialect
+    show-sql: true
   sql:
     init:
       mode: never
@@ -19,6 +26,12 @@ app:
   crypto:
     # 환경변수 APP_CRED_KEY에서 주입. 로컬에서 export APP_CRED_KEY=... 로 설정
     key: ${APP_CRED_KEY:}
+
+# PortOne (Iamport) 결제 설정
+iamport:
+  api:
+    key: ${IAMPORT_API_KEY:test_api_key}
+    secret: ${IAMPORT_API_SECRET:test_api_secret}
 
 server:
   port: 8080
