@@ -11,11 +11,14 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.budgetops.backend.gcp.dto.BillingAccountIdRequest;
 import com.budgetops.backend.gcp.dto.BillingTestResponse;
+import com.budgetops.backend.gcp.dto.GcpAccountResponse;
 import com.budgetops.backend.gcp.dto.SaveIntegrationResponse;
 import com.budgetops.backend.gcp.dto.ServiceAccountIdRequest;
 import com.budgetops.backend.gcp.dto.ServiceAccountKeyUploadRequest;
 import com.budgetops.backend.gcp.dto.ServiceAccountTestResponse;
 import com.budgetops.backend.gcp.service.GcpAccountService;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/gcp/accounts")
@@ -28,7 +31,7 @@ public class GcpAccountController {
     }
 
     @GetMapping
-    public ResponseEntity<?> listAccounts() {
+    public ResponseEntity<List<GcpAccountResponse>> listAccounts() {
         return ResponseEntity.ok(accountService.listAccounts());
     }
 

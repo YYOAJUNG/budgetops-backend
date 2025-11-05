@@ -137,16 +137,29 @@ public class GcpAccountService {
         }
     }
 
-    public List<Object> listAccounts() {
+    public List<GcpAccountResponse> listAccounts() {
         return integrationRepository.findAll().stream()
-                .map(a -> new Object() {
-                    public final Long id = a.getId();
-                    public final String serviceAccountId = a.getServiceAccountId();
-                    public final String projectId = a.getProjectId();
-                    public final String billingAccountId = a.getBillingAccountId();
-                    public final java.time.Instant createdAt = a.getCreatedAt();
-                })
+                .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    private GcpAccountResponse toResponse(GcpAccount account) {
+        GcpAccountResponse response = new GcpAccountResponse();
+        response.setId(account.getId());
+        response.setProjectId(account.getProjectId());
+        response.setCreatedAt(account.getCreatedAt());
+
+        // serviceAccountId 파싱: "budgetops@elated-bison-476314-f8.iam.gserviceaccount.com"
+        // @ 앞부분만 추출하여 serviceAccountName으로 설정
+        String serviceAccountId = account.getServiceAccountId();
+        if (serviceAccountId != null && serviceAccountId.contains("@")) {
+            String[] parts = serviceAccountId.split("@", 2);
+            response.setServiceAccountName(parts[0]);  // "budgetops"
+        } else {
+            response.setServiceAccountName(serviceAccountId);
+        }
+
+        return response;
     }
 }
 
