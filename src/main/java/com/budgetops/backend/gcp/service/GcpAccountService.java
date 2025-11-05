@@ -10,6 +10,7 @@ import com.google.cloud.bigquery.Dataset;
 import com.google.cloud.bigquery.DatasetId;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -28,14 +29,14 @@ public class GcpAccountService {
     private final AtomicReference<TempState> tempStateRef = new AtomicReference<>(new TempState());
     private final GcpServiceAccountVerifier serviceAccountVerifier;
     private final GcpBillingAccountVerifier billingVerifier;
-    private final GcpAccountRepository integrationRepository;
+    private final GcpAccountRepository gcpAccountRepository;
 
     public GcpAccountService(GcpServiceAccountVerifier serviceAccountVerifier,
                              GcpBillingAccountVerifier billingVerifier,
-                             GcpAccountRepository integrationRepository) {
+                             GcpAccountRepository gcpAccountRepository) {
         this.serviceAccountVerifier = serviceAccountVerifier;
         this.billingVerifier = billingVerifier;
-        this.integrationRepository = integrationRepository;
+        this.gcpAccountRepository = gcpAccountRepository;
     }
 
     public void setServiceAccountId(ServiceAccountIdRequest request) {
@@ -115,7 +116,7 @@ public class GcpAccountService {
             entity.setBillingExportLocation(datasetLocation);
             entity.setEncryptedServiceAccountKey(s.serviceAccountKeyJson);
 
-            GcpAccount saved = integrationRepository.save(entity);
+            GcpAccount saved = gcpAccountRepository.save(entity);
 
             // 완료 후 임시 상태 초기화
             tempStateRef.set(new TempState());
@@ -138,9 +139,16 @@ public class GcpAccountService {
     }
 
     public List<GcpAccountResponse> listAccounts() {
-        return integrationRepository.findAll().stream()
+        return gcpAccountRepository.findAll().stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public void deleteAccount(Long id) {
+        GcpAccount account = gcpAccountRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("GCP 계정을 찾을 수 없습니다."));
+        gcpAccountRepository.delete(account);
     }
 
     private GcpAccountResponse toResponse(GcpAccount account) {

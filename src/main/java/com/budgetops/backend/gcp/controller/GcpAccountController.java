@@ -3,6 +3,8 @@ package com.budgetops.backend.gcp.controller;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -77,6 +79,16 @@ public class GcpAccountController {
     public ResponseEntity<SaveIntegrationResponse> completeIntegration() {
         SaveIntegrationResponse result = accountService.saveIntegration();
         return ResponseEntity.ok(result);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteAccount(@PathVariable Long id) {
+        try {
+            accountService.deleteAccount(id);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        }
     }
 }
 
