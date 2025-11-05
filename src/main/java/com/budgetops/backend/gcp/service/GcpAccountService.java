@@ -11,7 +11,9 @@ import com.google.cloud.bigquery.DatasetId;
 
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 
 @Service
@@ -133,6 +135,18 @@ public class GcpAccountService {
             res.setMessage("저장 실패: " + e.getMessage());
             return res;
         }
+    }
+
+    public List<Object> listAccounts() {
+        return integrationRepository.findAll().stream()
+                .map(a -> new Object() {
+                    public final Long id = a.getId();
+                    public final String serviceAccountId = a.getServiceAccountId();
+                    public final String projectId = a.getProjectId();
+                    public final String billingAccountId = a.getBillingAccountId();
+                    public final java.time.Instant createdAt = a.getCreatedAt();
+                })
+                .collect(Collectors.toList());
     }
 }
 
