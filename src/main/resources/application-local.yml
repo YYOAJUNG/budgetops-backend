@@ -21,7 +21,7 @@ server:
 
 app:
   crypto:
-    key: ${APP_CRED_KEY:}
+    key: ${APP_CRED_KEY:default-dev-key-32-characters!}
   aws:
     validate: false
 
