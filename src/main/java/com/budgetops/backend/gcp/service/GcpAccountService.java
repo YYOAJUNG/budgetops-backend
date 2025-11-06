@@ -10,8 +10,11 @@ import com.google.cloud.bigquery.Dataset;
 import com.google.cloud.bigquery.DatasetId;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 
 @Service
@@ -26,14 +29,14 @@ public class GcpAccountService {
     private final AtomicReference<TempState> tempStateRef = new AtomicReference<>(new TempState());
     private final GcpServiceAccountVerifier serviceAccountVerifier;
     private final GcpBillingAccountVerifier billingVerifier;
-    private final GcpAccountRepository integrationRepository;
+    private final GcpAccountRepository gcpAccountRepository;
 
     public GcpAccountService(GcpServiceAccountVerifier serviceAccountVerifier,
                              GcpBillingAccountVerifier billingVerifier,
-                             GcpAccountRepository integrationRepository) {
+                             GcpAccountRepository gcpAccountRepository) {
         this.serviceAccountVerifier = serviceAccountVerifier;
         this.billingVerifier = billingVerifier;
-        this.integrationRepository = integrationRepository;
+        this.gcpAccountRepository = gcpAccountRepository;
     }
 
     public void setServiceAccountId(ServiceAccountIdRequest request) {
@@ -113,7 +116,7 @@ public class GcpAccountService {
             entity.setBillingExportLocation(datasetLocation);
             entity.setEncryptedServiceAccountKey(s.serviceAccountKeyJson);
 
-            GcpAccount saved = integrationRepository.save(entity);
+            GcpAccount saved = gcpAccountRepository.save(entity);
 
             // 완료 후 임시 상태 초기화
             tempStateRef.set(new TempState());
@@ -133,6 +136,38 @@ public class GcpAccountService {
             res.setMessage("저장 실패: " + e.getMessage());
             return res;
         }
+    }
+
+    public List<GcpAccountResponse> listAccounts() {
+        return gcpAccountRepository.findAll().stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public void deleteAccount(Long id) {
+        GcpAccount account = gcpAccountRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("GCP 계정을 찾을 수 없습니다."));
+        gcpAccountRepository.delete(account);
+    }
+
+    private GcpAccountResponse toResponse(GcpAccount account) {
+        GcpAccountResponse response = new GcpAccountResponse();
+        response.setId(account.getId());
+        response.setProjectId(account.getProjectId());
+        response.setCreatedAt(account.getCreatedAt());
+
+        // serviceAccountId 파싱: "budgetops@elated-bison-476314-f8.iam.gserviceaccount.com"
+        // @ 앞부분만 추출하여 serviceAccountName으로 설정
+        String serviceAccountId = account.getServiceAccountId();
+        if (serviceAccountId != null && serviceAccountId.contains("@")) {
+            String[] parts = serviceAccountId.split("@", 2);
+            response.setServiceAccountName(parts[0]);  // "budgetops"
+        } else {
+            response.setServiceAccountName(serviceAccountId);
+        }
+
+        return response;
     }
 }
 

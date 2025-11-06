@@ -79,4 +79,12 @@ springdoc:
     enabled: true
   packages-to-scan: com.budgetops.backend
   paths-to-match: /api/**
+# PortOne (Iamport) 결제 설정
+iamport:
+  api:
+    key: ${IAMPORT_API_KEY:test_api_key}
+    secret: ${IAMPORT_API_SECRET:test_api_secret}
+
+server:
+  port: 8080
 
