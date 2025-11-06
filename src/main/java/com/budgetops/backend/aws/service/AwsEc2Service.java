@@ -13,7 +13,6 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.ec2.model.*;
 
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -34,7 +33,7 @@ public class AwsEc2Service {
      * @param region 조회할 리전 (null이면 계정의 기본 리전)
      * @return EC2 인스턴스 목록
      */
-    public List<AwsEc2InstanceResponse> listEc2Instances(Long accountId, String region) {
+    public List<AwsEc2InstanceResponse> listInstances(Long accountId, String region) {
         AwsAccount account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
         
@@ -135,14 +134,19 @@ public class AwsEc2Service {
         // 시작 시간 포맷팅
         String launchTime = "";
         if (instance.launchTime() != null) {
-            launchTime = instance.launchTime()
-                    .format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            launchTime = instance.launchTime().toString();
+        }
+        
+        // Instance Type 값 변환
+        String instanceType = "";
+        if (instance.instanceType() != null) {
+            instanceType = instance.instanceTypeAsString();
         }
         
         return AwsEc2InstanceResponse.builder()
                 .instanceId(instance.instanceId())
                 .name(name)
-                .instanceType(instance.instanceType() != null ? instance.instanceType().toString() : "")
+                .instanceType(instanceType)
                 .state(instance.state() != null ? instance.state().nameAsString() : "")
                 .availabilityZone(instance.placement() != null ? instance.placement().availabilityZone() : "")
                 .publicIp(instance.publicIpAddress() != null ? instance.publicIpAddress() : "")

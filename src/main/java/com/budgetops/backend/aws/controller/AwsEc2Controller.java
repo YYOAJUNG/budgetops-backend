@@ -27,5 +27,15 @@ public class AwsEc2Controller {
         List<AwsEc2InstanceResponse> instances = ec2Service.listInstances(accountId, regionOverride);
         return ResponseEntity.ok(instances);
     }
+
+    @GetMapping("/{accountId}/ec2/instances/{instanceId}")
+    public ResponseEntity<AwsEc2InstanceResponse> getInstance(
+            @PathVariable Long accountId,
+            @PathVariable String instanceId,
+            @RequestParam(value = "region", required = false) String regionOverride
+    ) {
+        AwsEc2InstanceResponse instance = ec2Service.getEc2Instance(accountId, instanceId, regionOverride);
+        return ResponseEntity.ok(instance);
+    }
 }
 
