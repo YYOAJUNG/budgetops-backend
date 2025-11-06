@@ -63,9 +63,6 @@ spring:
             token-uri: https://oauth2.googleapis.com/token
             user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
 
-server:
-  port: 8080
-
 app:
   crypto:
     key: ${APP_CRED_KEY:}
