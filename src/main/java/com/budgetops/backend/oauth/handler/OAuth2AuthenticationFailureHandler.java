@@ -21,10 +21,10 @@ public class OAuth2AuthenticationFailureHandler extends SimpleUrlAuthenticationF
     @Override
     public void onAuthenticationFailure(HttpServletRequest request, HttpServletResponse response,
                                        AuthenticationException exception) throws IOException {
-        log.error("OAuth2 로그인 실패", exception);
+        log.error("OAuth2 authentication failed", exception);
 
         String targetUrl = UriComponentsBuilder.fromUriString(redirectUri)
-                .queryParam("error", exception.getLocalizedMessage())
+                .queryParam("error", "authentication_failed")
                 .build().toUriString();
 
         getRedirectStrategy().sendRedirect(request, response, targetUrl);
