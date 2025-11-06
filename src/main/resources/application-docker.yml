@@ -1,0 +1,20 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://db:5432/budgetops}
+    username: ${SPRING_DATASOURCE_USERNAME:budgetops}
+    password: ${SPRING_DATASOURCE_PASSWORD:1234}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+
+# 도커에서는 실제 도메인으로 리다이렉트
+app:
+  oauth2:
+    redirect-uri: http://localhost:3000/oauth/callback
+iamport:
+  api:
+    key: ${IAMPORT_API_KEY:test_api_key}
+    secret: ${IAMPORT_API_SECRET:test_api_secret}
