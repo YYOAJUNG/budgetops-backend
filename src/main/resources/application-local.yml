@@ -15,6 +15,22 @@ spring:
   h2:
     console:
       enabled: true
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope:
+              - email
+              - profile
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          google:
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+            token-uri: https://oauth2.googleapis.com/token
+            user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
 
 server:
   port: 8080
@@ -24,6 +40,8 @@ app:
     key: ${APP_CRED_KEY:}
   aws:
     validate: false
+  oauth2:
+    redirect-uri: http://localhost:3000/oauth/callback
 
 springdoc:
   api-docs:

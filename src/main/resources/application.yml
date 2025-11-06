@@ -1,30 +1,82 @@
+#spring:
+#  datasource:
+#    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/budgetops}
+#    username: ${SPRING_DATASOURCE_USERNAME:budgetops}
+#    password: ${SPRING_DATASOURCE_PASSWORD:secret}
+#  jpa:
+#    hibernate:
+#      ddl-auto: update   # 개발용
+#    properties:
+#      hibernate:
+#        format_sql: true
+#  sql:
+#    init:
+#      mode: never
+#  application:
+#    name: budgetops-backend
+#
+#app:
+#  crypto:
+#    # 환경변수 APP_CRED_KEY에서 주입. 로컬에서 export APP_CRED_KEY=... 로 설정
+#    key: ${APP_CRED_KEY:}
+#
+#server:
+#  port: 8080
+#
+#management:
+#  endpoints:
+#    web:
+#      exposure:
+#        include: health,info
+
 spring:
+  main:
+    allow-bean-definition-overriding: true
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/budgetops}
-    username: ${SPRING_DATASOURCE_USERNAME:budgetops}
-    password: ${SPRING_DATASOURCE_PASSWORD:secret}
+    url: jdbc:h2:mem:budgetops;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
   jpa:
     hibernate:
-      ddl-auto: update   # 개발용
+      ddl-auto: update
     properties:
       hibernate:
         format_sql: true
-  sql:
-    init:
-      mode: never
-  application:
-    name: budgetops-backend
-
-app:
-  crypto:
-    # 환경변수 APP_CRED_KEY에서 주입. 로컬에서 export APP_CRED_KEY=... 로 설정
-    key: ${APP_CRED_KEY:}
+  h2:
+    console:
+      enabled: true
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope:
+              - email
+              - profile
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          google:
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+            token-uri: https://oauth2.googleapis.com/token
+            user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
 
 server:
   port: 8080
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
+app:
+  crypto:
+    key: ${APP_CRED_KEY:}
+  aws:
+    validate: false
+  oauth2:
+    redirect-uri: http://localhost:3000/oauth/callback
+
+springdoc:
+  api-docs:
+    enabled: true
+  packages-to-scan: com.budgetops.backend
+  paths-to-match: /api/**
+
