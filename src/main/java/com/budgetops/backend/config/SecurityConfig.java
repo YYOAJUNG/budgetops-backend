@@ -1,5 +1,6 @@
 package com.budgetops.backend.config;
 
+import com.budgetops.backend.oauth.handler.CustomLogoutSuccessHandler;
 import com.budgetops.backend.oauth.handler.OAuth2AuthenticationFailureHandler;
 import com.budgetops.backend.oauth.handler.OAuth2AuthenticationSuccessHandler;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class SecurityConfig {
 
     private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
     private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
+    private final CustomLogoutSuccessHandler customLogoutSuccessHandler;
 
     @Value("${app.cors.allowed-origins:http://localhost:3000}")
     private String allowedOrigins;
@@ -54,6 +56,13 @@ public class SecurityConfig {
                 .oauth2Login(oauth2 -> oauth2
                         .successHandler(oAuth2AuthenticationSuccessHandler)
                         .failureHandler(oAuth2AuthenticationFailureHandler)
+                )
+                .logout(logout -> logout
+                        .logoutUrl("/api/auth/logout")
+                        .logoutSuccessHandler(customLogoutSuccessHandler)
+                        .invalidateHttpSession(true)
+                        .deleteCookies("JSESSIONID")
+                        .permitAll()
                 );
 
         return http.build();

@@ -43,6 +43,11 @@ app:
   oauth2:
     redirect-uri: http://localhost:3000/oauth/callback
 
+iamport:
+  api:
+    key: test_key
+    secret: test_secret
+
 springdoc:
   api-docs:
     enabled: true
