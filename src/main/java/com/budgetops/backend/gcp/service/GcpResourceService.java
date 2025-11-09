@@ -52,11 +52,13 @@ public class GcpResourceService {
             AssetServiceSettings settings = AssetServiceSettings.newBuilder()
                     .setCredentialsProvider(() -> credentials)
                     .build();
-
+            
+            // TODO: AssetType 추가 필요 (주요 서비스 위주로. 현재는 VM 인스턴스만 되어 있음)
             try (AssetServiceClient client = AssetServiceClient.create(settings)) {
                 String parent = "projects/" + projectId;
                 SearchAllResourcesRequest request = SearchAllResourcesRequest.newBuilder()
                         .setScope(parent)
+                        .addAssetTypes("compute.googleapis.com/Instance")
                         .build();
 
                 for (ResourceSearchResult result : client.searchAllResources(request).iterateAll()) {
