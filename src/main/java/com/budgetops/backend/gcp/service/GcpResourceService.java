@@ -11,6 +11,7 @@ import com.google.cloud.asset.v1.AssetServiceClient;
 import com.google.cloud.asset.v1.AssetServiceSettings;
 import com.google.cloud.asset.v1.ResourceSearchResult;
 import com.google.cloud.asset.v1.SearchAllResourcesRequest;
+import com.google.cloud.asset.v1.VersionedResource;
 import com.google.protobuf.Struct;
 import com.google.protobuf.Value;
 import lombok.RequiredArgsConstructor;
@@ -186,7 +187,41 @@ public class GcpResourceService {
     }
 
     private String extractStatus(ResourceSearchResult result) {
-        // ResourceSearchResult의 additionalAttributes에서 상태 정보 추출
+        // 1. ResourceSearchResult의 최상위 레벨에서 state 필드 추출 (GCP API는 state 필드를 최상위에 제공)
+        try {
+            String state = result.getState();
+            if (state != null && !state.isEmpty()) {
+                return state;
+            }
+        } catch (Exception e) {
+            // getState() 접근 실패 시 무시하고 계속
+        }
+
+        // 2. versionedResources에서 state 필드 추출
+        try {
+            List<VersionedResource> versionedResources = result.getVersionedResourcesList();
+            if (versionedResources != null && !versionedResources.isEmpty()) {
+                // 가장 최신 버전의 리소스 사용
+                VersionedResource latestResource = versionedResources.get(0);
+                if (latestResource.hasResource()) {
+                    Struct resourceData = latestResource.getResource();
+                    if (resourceData != null) {
+                        Map<String, Value> fields = resourceData.getFieldsMap();
+                        // state 필드 확인
+                        if (fields.containsKey("state")) {
+                            Value stateValue = fields.get("state");
+                            if (stateValue.hasStringValue()) {
+                                return stateValue.getStringValue();
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // versionedResources 접근 실패 시 무시하고 계속
+        }
+
+        // 3. additionalAttributes에서 상태 정보 추출
         try {
             Struct additionalAttributes = result.getAdditionalAttributes();
             if (additionalAttributes != null) {
@@ -197,15 +232,9 @@ public class GcpResourceService {
                         return stateValue.getStringValue();
                     }
                 }
-                if (fields.containsKey("status")) {
-                    Value statusValue = fields.get("status");
-                    if (statusValue.hasStringValue()) {
-                        return statusValue.getStringValue();
-                    }
-                }
             }
         } catch (Exception e) {
-            // 리소스 데이터 접근 실패 시 무시
+            // additionalAttributes 접근 실패 시 무시
         }
         return null;
     }
@@ -216,6 +245,7 @@ public class GcpResourceService {
         response.setResourceType(resource.getResourceType());
         response.setMonthlyCost(resource.getMonthlyCost());
         response.setRegion(resource.getRegion());
+        response.setStatus(resource.getStatus());
         response.setLastUpdated(resource.getLastUpdated());
         return response;
     }

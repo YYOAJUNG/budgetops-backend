@@ -13,6 +13,7 @@ public class GcpResourceResponse {
     private String resourceType;
     private BigDecimal monthlyCost;
     private String region;
+    private String status;
     private Instant lastUpdated;
 }
 
