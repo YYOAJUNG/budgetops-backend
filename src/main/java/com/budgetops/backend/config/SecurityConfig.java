@@ -1,5 +1,6 @@
 package com.budgetops.backend.config;
 
+import com.budgetops.backend.oauth.filter.JwtAuthenticationFilter;
 import com.budgetops.backend.oauth.handler.CustomLogoutSuccessHandler;
 import com.budgetops.backend.oauth.handler.OAuth2AuthenticationFailureHandler;
 import com.budgetops.backend.oauth.handler.OAuth2AuthenticationSuccessHandler;
@@ -11,7 +12,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -27,6 +28,7 @@ public class SecurityConfig {
     private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
     private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
     private final CustomLogoutSuccessHandler customLogoutSuccessHandler;
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Value("${app.cors.allowed-origins:http://localhost:3000}")
     private String allowedOrigins;
@@ -34,13 +36,10 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf
-                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                        .ignoringRequestMatchers("/oauth2/**", "/login/oauth2/**")
-                )
+                .csrf(csrf -> csrf.disable())  // JWT 사용 시 CSRF 비활성화
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)  // Stateless로 변경
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
@@ -49,7 +48,9 @@ public class SecurityConfig {
                                 "/favicon.ico",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",
-                                "/actuator/**"
+                                "/actuator/**",
+                                "/oauth2/**",
+                                "/login/oauth2/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
@@ -60,10 +61,10 @@ public class SecurityConfig {
                 .logout(logout -> logout
                         .logoutUrl("/api/auth/logout")
                         .logoutSuccessHandler(customLogoutSuccessHandler)
-                        .invalidateHttpSession(true)
-                        .deleteCookies("JSESSIONID")
                         .permitAll()
-                );
+                )
+                // JWT 인증 필터 추가
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

@@ -9,19 +9,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/api/v1/users")
 @RequiredArgsConstructor
-public class AuthController {
+public class UserController {
 
     private final JwtTokenProvider jwtTokenProvider;
 
-    @GetMapping("/user")
+    @GetMapping("/me")
     public ResponseEntity<UserInfo> getCurrentUser(HttpServletRequest request) {
         String jwt = getJwtFromRequest(request);
 
@@ -38,14 +37,6 @@ public class AuthController {
                 .build();
 
         return ResponseEntity.ok(userInfo);
-    }
-
-    @PostMapping("/logout")
-    public ResponseEntity<Void> logout() {
-        // JWT는 서버에서 저장하지 않으므로, 클라이언트 측에서 토큰 삭제하면 됨
-        // 이 엔드포인트는 로그 기록 용도로 유지
-        log.info("User logout requested");
-        return ResponseEntity.ok().build();
     }
 
     private String getJwtFromRequest(HttpServletRequest request) {
