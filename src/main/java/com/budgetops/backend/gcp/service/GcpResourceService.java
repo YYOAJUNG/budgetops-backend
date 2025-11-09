@@ -243,11 +243,24 @@ public class GcpResourceService {
         GcpResourceResponse response = new GcpResourceResponse();
         response.setResourceName(resource.getResourceName());
         response.setResourceType(resource.getResourceType());
+        response.setResourceTypeShort(extractResourceTypeShort(resource.getResourceType()));
         response.setMonthlyCost(resource.getMonthlyCost());
         response.setRegion(resource.getRegion());
         response.setStatus(resource.getStatus());
         response.setLastUpdated(resource.getLastUpdated());
         return response;
+    }
+
+    private String extractResourceTypeShort(String resourceType) {
+        // 예: "compute.googleapis.com/Instance" -> "Instance"
+        if (resourceType == null || resourceType.isEmpty()) {
+            return null;
+        }
+        int lastSlashIndex = resourceType.lastIndexOf('/');
+        if (lastSlashIndex >= 0 && lastSlashIndex < resourceType.length() - 1) {
+            return resourceType.substring(lastSlashIndex + 1);
+        }
+        return resourceType;
     }
 }
 

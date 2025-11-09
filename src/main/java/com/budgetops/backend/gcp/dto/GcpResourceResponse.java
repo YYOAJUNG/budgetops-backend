@@ -11,6 +11,7 @@ import java.time.Instant;
 public class GcpResourceResponse {
     private String resourceName;
     private String resourceType;
+    private String resourceTypeShort;
     private BigDecimal monthlyCost;
     private String region;
     private String status;
