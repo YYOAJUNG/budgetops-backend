@@ -45,8 +45,8 @@ app:
 
 iamport:
   api:
-    key: 3651385135225276
-    secret: jhpUiYMw83nsKsnFZ9cbYSlTxVla4RpVyDFCyKOwYZUGTzAIPtx080aKoGLq8ODVoyWI2UL51sU1Nsdu
+    key: ${IAMPORT_API_KEY}
+    secret: ${IAMPORT_API_SECRET}
 
 jwt:
   secret: ${JWT_SECRET}
