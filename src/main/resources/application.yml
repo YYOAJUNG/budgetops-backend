@@ -38,5 +38,5 @@ jwt:
 app:
   # 기본 리다리엑트(배포용 도메인)
   oauth2:
-    redirect-uri: https://budgetops.work/oauth/callback
+    redirect-uri: ${FRONTEND_URL}/oauth/callback
 

@@ -15,7 +15,7 @@ spring:
 # 도커에서는 실제 도메인으로 리다이렉트
 app:
   oauth2:
-    redirect-uri: https://budgetops.work/oauth/callback
+    redirect-uri: ${FRONTEND_URL}/oauth/callback
 
 iamport:
   api:

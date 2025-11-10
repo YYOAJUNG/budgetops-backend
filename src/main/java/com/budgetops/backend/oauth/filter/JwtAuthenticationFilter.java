@@ -34,13 +34,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String jwt = getJwtFromRequest(request);
 
             if (StringUtils.hasText(jwt) && jwtTokenProvider.validateToken(jwt)) {
-                Claims claims = jwtTokenProvider.getClaims(jwt);
-                String email = claims.getSubject();
+                // JWT에서 memberId 추출
+                Long memberId = jwtTokenProvider.getMemberIdFromToken(jwt);
 
-                // 사용자 인증 객체 생성
+                // 사용자 인증 객체 생성 (principal에 memberId 사용)
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(
-                                email,
+                                memberId,
                                 null,
                                 List.of(new SimpleGrantedAuthority("ROLE_USER"))
                         );
@@ -50,7 +50,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // SecurityContext에 인증 정보 설정
                 SecurityContextHolder.getContext().setAuthentication(authentication);
 
-                log.debug("Set Authentication for user: {}", email);
+                log.debug("Set Authentication for memberId: {}", memberId);
             }
         } catch (Exception ex) {
             log.error("Could not set user authentication in security context", ex);
