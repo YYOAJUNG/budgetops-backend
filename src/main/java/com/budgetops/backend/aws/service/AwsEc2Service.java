@@ -302,7 +302,7 @@ public class AwsEc2Service {
             
             // 보안 그룹 설정
             if (request.getSecurityGroupId() != null && !request.getSecurityGroupId().isBlank()) {
-                requestBuilder.securityGroupIds(request.getSecurityGroupId());
+                requestBuilder.securityGroupIds(java.util.Arrays.asList(request.getSecurityGroupId()));
             }
             
             // 서브넷 설정
