@@ -30,6 +30,7 @@ public class BillingResponse {
     private Integer price;              // 월 가격 (Enterprise는 null)
     private String nextPaymentDate;     // ISO 8601 형식 (yyyy-MM-dd)
     private String status;              // "active", "canceled", "past_due"
+    private String canceledAt;          // 구독 취소 시각 (ISO 8601)
 
     // 토큰/할당량 정보
     private Integer currentTokens;      // 현재 사용 가능한 토큰
@@ -56,7 +57,10 @@ public class BillingResponse {
                 .nextPaymentDate(billing.getNextBillingDate() != null
                     ? billing.getNextBillingDate().format(DateConstants.DATE_FORMAT)
                     : null)
-                .status("active")
+                .status(billing.getStatus().getKey())
+                .canceledAt(billing.getCanceledAt() != null
+                    ? billing.getCanceledAt().format(DateConstants.DATETIME_FORMAT)
+                    : null)
 
                 // 토큰/할당량 정보
                 .currentTokens(billing.getCurrentTokens())

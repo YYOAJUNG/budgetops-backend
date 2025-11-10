@@ -1,6 +1,7 @@
 package com.budgetops.backend.billing.entity;
 
 import com.budgetops.backend.billing.enums.BillingPlan;
+import com.budgetops.backend.billing.enums.BillingStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -36,6 +37,14 @@ public class Billing {
 
     @Column(name = "next_billing_date")
     private LocalDateTime nextBillingDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private BillingStatus status = BillingStatus.ACTIVE;
+
+    @Column(name = "canceled_at")
+    private LocalDateTime canceledAt;
 
     @Column(nullable = false)
     @Builder.Default
@@ -76,5 +85,36 @@ public class Billing {
      */
     public void setNextBillingDateFromNow() {
         this.nextBillingDate = LocalDateTime.now().plusMonths(1);
+    }
+
+    /**
+     * 구독 취소
+     */
+    public void cancelSubscription() {
+        this.status = BillingStatus.CANCELED;
+        this.canceledAt = LocalDateTime.now();
+    }
+
+    /**
+     * 구독이 만료되었는지 확인 (취소 후 nextBillingDate가 지남)
+     */
+    public boolean isExpired() {
+        return status == BillingStatus.CANCELED
+                && nextBillingDate != null
+                && LocalDateTime.now().isAfter(nextBillingDate);
+    }
+
+    /**
+     * 구독이 활성 상태인지 확인
+     */
+    public boolean isActive() {
+        return status == BillingStatus.ACTIVE;
+    }
+
+    /**
+     * FREE 플랜으로 다운그레이드
+     */
+    public void downgradeToFree() {
+        changePlan(BillingPlan.FREE);
     }
 }

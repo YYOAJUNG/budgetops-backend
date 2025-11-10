@@ -79,10 +79,58 @@ public class BillingService {
         // 요금제 변경
         billing.changePlan(newPlan);
 
+        // 유료 플랜으로 변경 시 다음 청구일 설정 (현재 시간 + 1개월)
+        if (!newPlan.isFree()) {
+            billing.setNextBillingDateFromNow();
+        }
+
         log.info("요금제 변경: memberId={}, newPlan={}, price={}",
                 member.getId(), newPlan, billing.getCurrentPrice());
 
         return billingRepository.save(billing);
+    }
+
+    /**
+     * 구독 취소
+     * - 즉시 다운그레이드하지 않고 상태만 CANCELED로 변경
+     * - nextBillingDate까지는 현재 플랜 유지
+     */
+    public Billing cancelSubscription(Member member) {
+        Billing billing = billingRepository.findByMember(member)
+                .orElseThrow(() -> new BillingNotFoundException(member.getId()));
+
+        if (!billing.isActive()) {
+            throw new IllegalStateException("이미 취소된 구독입니다.");
+        }
+
+        if (billing.isFreePlan()) {
+            throw new IllegalStateException("무료 플랜은 취소할 수 없습니다.");
+        }
+
+        billing.cancelSubscription();
+
+        log.info("구독 취소: memberId={}, canceledAt={}, nextBillingDate={}",
+                member.getId(), billing.getCanceledAt(), billing.getNextBillingDate());
+
+        return billingRepository.save(billing);
+    }
+
+    /**
+     * 만료된 구독 확인 및 처리
+     * - CANCELED 상태이고 nextBillingDate가 지났다면 FREE 플랜으로 다운그레이드
+     */
+    public void checkAndHandleExpiredSubscription(Member member) {
+        billingRepository.findByMember(member).ifPresent(billing -> {
+            if (billing.isExpired()) {
+                log.info("만료된 구독 처리 시작: memberId={}, currentPlan={}, nextBillingDate={}",
+                        member.getId(), billing.getCurrentPlan(), billing.getNextBillingDate());
+
+                billing.downgradeToFree();
+                billingRepository.save(billing);
+
+                log.info("만료된 구독 처리 완료: memberId={}, newPlan=FREE", member.getId());
+            }
+        });
     }
 
     /**
@@ -96,9 +144,8 @@ public class BillingService {
      * 빌링 정보 삭제
      */
     public void deleteBilling(Member member) {
-        Optional<Billing> billing = billingRepository.findByMember(member);
-        billing.ifPresent(b -> {
-            billingRepository.delete(b);
+        billingRepository.findByMember(member).ifPresent(billing -> {
+            billingRepository.delete(billing);
             log.info("빌링 정보 삭제: memberId={}", member.getId());
         });
     }
