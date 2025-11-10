@@ -1,6 +1,7 @@
 package com.budgetops.backend.aws.controller;
 
 import com.budgetops.backend.aws.dto.AwsEc2InstanceResponse;
+import com.budgetops.backend.aws.dto.AwsEc2MetricsResponse;
 import com.budgetops.backend.aws.service.AwsEc2Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -36,6 +37,17 @@ public class AwsEc2Controller {
     ) {
         AwsEc2InstanceResponse instance = ec2Service.getEc2Instance(accountId, instanceId, regionOverride);
         return ResponseEntity.ok(instance);
+    }
+
+    @GetMapping("/{accountId}/ec2/instances/{instanceId}/metrics")
+    public ResponseEntity<AwsEc2MetricsResponse> getInstanceMetrics(
+            @PathVariable Long accountId,
+            @PathVariable String instanceId,
+            @RequestParam(value = "region", required = false) String regionOverride,
+            @RequestParam(value = "hours", required = false, defaultValue = "1") Integer hours
+    ) {
+        AwsEc2MetricsResponse metrics = ec2Service.getInstanceMetrics(accountId, instanceId, regionOverride, hours);
+        return ResponseEntity.ok(metrics);
     }
 }
 
