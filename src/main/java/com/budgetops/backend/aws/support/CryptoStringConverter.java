@@ -24,14 +24,20 @@ public class CryptoStringConverter implements AttributeConverter<String, String>
     public String convertToDatabaseColumn(String plain) {
         if (plain == null) return null;
         try {
+            byte[] keyBytes = key();
+            if (keyBytes == null || keyBytes.length == 0) {
+                throw new IllegalStateException("암호화 키가 설정되지 않았습니다. APP_CRED_KEY 환경 변수를 확인하세요.");
+            }
             byte[] iv = new byte[IV_LEN];
             new SecureRandom().nextBytes(iv);
             Cipher c = Cipher.getInstance(TRANS);
-            c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key(), ALG), new GCMParameterSpec(GCM_TAG_BITS, iv));
+            c.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(keyBytes, ALG), new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] ct = c.doFinal(plain.getBytes());
             return Base64.getEncoder().encodeToString(iv) + "|" + Base64.getEncoder().encodeToString(ct);
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
-            throw new IllegalStateException("Encrypt failed", e);
+            throw new IllegalStateException("Encrypt failed: " + e.getMessage() + ". APP_CRED_KEY 환경 변수를 확인하세요.", e);
         }
     }
 
