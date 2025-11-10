@@ -2,6 +2,7 @@ plugins {
 	id 'java'
 	id 'org.springframework.boot' version '3.5.5'
 	id 'io.spring.dependency-management' version '1.1.7'
+	id 'co.uzzu.dotenv.gradle' version '4.0.0'
 }
 
 group = 'com.example'
@@ -52,8 +53,35 @@ dependencies {
 
 	// Iamport (PortOne) 결제
 	implementation 'com.github.iamport:iamport-rest-client-java:0.2.21'
+
+	// JWT
+	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 }
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+// .env 파일의 환경변수를 bootRun 태스크에 자동으로 로드
+// application-local.yml과 충돌하지 않도록 필요한 환경변수만 로드
+tasks.named('bootRun') {
+	doFirst {
+		def dotenvFile = file('.env')
+		if (dotenvFile.exists()) {
+			// 로드할 환경변수 목록 (Spring 설정과 충돌하지 않는 것만)
+			def allowedKeys = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'JWT_SECRET', 'APP_CRED_KEY']
+
+			dotenvFile.readLines().each { line ->
+				if (line && !line.startsWith('#') && line.contains('=')) {
+					def (key, value) = line.split('=', 2)
+					def trimmedKey = key.trim()
+					if (allowedKeys.contains(trimmedKey)) {
+						environment trimmedKey, value.trim()
+					}
+				}
+			}
+		}
+	}
 }
