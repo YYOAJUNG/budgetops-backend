@@ -154,4 +154,3 @@ public class AwsEc2Service {
                 .build();
     }
 }
-
