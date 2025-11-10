@@ -34,7 +34,14 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                        .ignoringRequestMatchers("/oauth2/**", "/login/oauth2/**", "/api/v1/users/*/payment/register", "/api/v1/users/*/payment/status")
+                        .ignoringRequestMatchers(
+                                "/oauth2/**",
+                                "/login/oauth2/**",
+                                "/api/v1/users/*/payment/register",
+                                "/api/v1/users/*/payment/status",
+                                "/api/v1/users/*/payment/history",
+                                "/api/v1/users/*/payment/purchase-tokens"
+                        )
                 )
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session
@@ -49,7 +56,9 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/actuator/**",
                                 "/api/v1/users/*/payment/register",
-                                "/api/v1/users/*/payment/status"
+                                "/api/v1/users/*/payment/status",
+                                "/api/v1/users/*/payment/history",
+                                "/api/v1/users/*/payment/purchase-tokens"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
