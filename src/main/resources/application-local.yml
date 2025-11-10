@@ -41,7 +41,7 @@ app:
   aws:
     validate: false
   oauth2:
-    redirect-uri: http://localhost:3000/oauth/callback
+    redirect-uri: https://budgetops.work/oauth/callback
 
 iamport:
   api:

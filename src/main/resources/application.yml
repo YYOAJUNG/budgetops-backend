@@ -29,5 +29,5 @@ management:
 app:
   oauth2:
     # 기본값 (로컬 Next.js가 이걸 받을 거라고 가정)
-    redirect-uri: http://localhost:3000/oauth/callback
+    redirect-uri: https://budgetops.work/oauth/callback
 
