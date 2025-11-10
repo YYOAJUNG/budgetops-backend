@@ -24,10 +24,32 @@ public class AwsAccountService {
 
     @Transactional
     public AwsAccount createWithVerify(AwsAccountCreateRequest req) {
-        accountRepo.findByAccessKeyId(req.getAccessKeyId()).ifPresent(a -> {
-            throw new IllegalArgumentException("이미 등록된 accessKeyId 입니다.");
-        });
+        // 기존 계정이 있는지 확인
+        var existingAccount = accountRepo.findByAccessKeyId(req.getAccessKeyId());
+        
+        if (existingAccount.isPresent()) {
+            AwsAccount account = existingAccount.get();
+            // 활성 계정이면 오류
+            if (Boolean.TRUE.equals(account.getActive())) {
+                throw new IllegalArgumentException("이미 등록된 accessKeyId 입니다.");
+            }
+            // 비활성 계정이면 재활성화 및 정보 업데이트
+            if (validate) {
+                boolean ok = credentialValidator.isValid(req.getAccessKeyId(), req.getSecretAccessKey(), req.getDefaultRegion());
+                if (!ok) {
+                    throw new IllegalArgumentException("AWS 자격증명이 유효하지 않습니다.");
+                }
+            }
+            account.setName(req.getName());
+            account.setDefaultRegion(req.getDefaultRegion());
+            account.setSecretKeyEnc(req.getSecretAccessKey()); // @Convert에 의해 암호화 저장
+            String sk = req.getSecretAccessKey();
+            account.setSecretKeyLast4(sk.substring(Math.max(0, sk.length() - 4)));
+            account.setActive(Boolean.TRUE); // 재활성화
+            return accountRepo.save(account);
+        }
 
+        // 새 계정 생성
         if (validate) {
             boolean ok = credentialValidator.isValid(req.getAccessKeyId(), req.getSecretAccessKey(), req.getDefaultRegion());
             if (!ok) {
