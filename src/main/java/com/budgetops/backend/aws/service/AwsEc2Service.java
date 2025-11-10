@@ -15,7 +15,6 @@ import software.amazon.awssdk.services.ec2.model.*;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
