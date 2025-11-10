@@ -44,10 +44,11 @@ dependencies {
 	runtimeOnly 'com.h2database:h2:2.3.232'
   
   // GCP 자격증명 및 API
-	implementation 'com.google.auth:google-auth-library-oauth2-http:1.22.0'
+	implementation 'com.google.auth:google-auth-library-oauth2-http:1.40.0'
 	implementation 'com.google.cloud:google-cloud-bigquery:2.38.0'
 	implementation 'com.google.cloud:google-cloud-monitoring:3.22.0'
-	implementation 'com.google.apis:google-api-services-iam:v1-rev20251010-2.0.0'
+  implementation 'com.google.apis:google-api-services-iam:v1-rev20251010-2.0.0'
+	implementation 'com.google.cloud:google-cloud-asset:3.82.0'
 
 	// Iamport (PortOne) 결제
 	implementation 'com.github.iamport:iamport-rest-client-java:0.2.21'
