@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://db:5432/budgetops}
-    username: ${SPRING_DATASOURCE_USERNAME:budgetops}
-    password: ${SPRING_DATASOURCE_PASSWORD:1234}
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -16,6 +16,7 @@ spring:
 app:
   oauth2:
     redirect-uri: https://budgetops.work/oauth/callback
+
 iamport:
   api:
     key: ${IAMPORT_API_KEY:test_api_key}
