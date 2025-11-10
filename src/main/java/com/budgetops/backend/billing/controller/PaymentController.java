@@ -49,12 +49,10 @@ public class PaymentController {
             @RequestBody PaymentRegisterRequest request
     ) {
         Member member = getMemberById(userId);
+        Payment payment = paymentService.registerPayment(request.getImpUid(), request.getCustomerUid(), member);
 
-        // 결제 검증 및 저장
-        paymentService.verifyPayment(request.getImpUid());
-        Payment payment = paymentService.savePayment(request.getImpUid(), member);
-
-        log.info("결제 등록 완료: userId={}, impUid={}", userId, request.getImpUid());
+        log.info("결제 등록 완료: userId={}, impUid={}, customerUid={}",
+                userId, request.getImpUid(), request.getCustomerUid());
         return ResponseEntity.ok(PaymentResponse.from(payment));
     }
 
@@ -147,11 +145,24 @@ public class PaymentController {
         // 요청 검증
         request.validate();
 
-        // 결제 검증
-        paymentService.verifyPayment(request.getImpUid());
-
         // 패키지 정보 조회
         TokenPackage tokenPackage = TokenPackage.fromId(request.getPackageId());
+
+        String impUid;
+
+        // 빌링키 사용 여부에 따라 결제 방식 선택
+        if (Boolean.TRUE.equals(request.getUseBillingKey())) {
+            // 빌링키로 자동 결제
+            String merchantUid = "TOKEN_" + System.currentTimeMillis();
+            String orderName = String.format("토큰 %d개 구매", tokenPackage.getTokenAmount());
+            impUid = paymentService.payWithBillingKey(member, merchantUid, orderName, tokenPackage.getPrice());
+            log.info("빌링키 결제 사용: userId={}, impUid={}", userId, impUid);
+        } else {
+            // 일반 결제 검증
+            impUid = request.getImpUid();
+            paymentService.verifyPayment(impUid);
+            log.info("일반 결제 사용: userId={}, impUid={}", userId, impUid);
+        }
 
         // Billing 정보 조회 및 토큰 추가
         Billing billing = billingService.getBillingByMember(member)
@@ -169,8 +180,9 @@ public class PaymentController {
                 .purchaseDate(LocalDateTime.now().format(DateConstants.DATETIME_FORMAT))
                 .build();
 
-        log.info("토큰 구매 완료: userId={}, packageId={}, tokens={}, newTotal={}",
-                userId, request.getPackageId(), tokenPackage.getTotalTokens(), billing.getCurrentTokens());
+        log.info("토큰 구매 완료: userId={}, packageId={}, tokens={}, newTotal={}, usedBillingKey={}",
+                userId, request.getPackageId(), tokenPackage.getTotalTokens(), billing.getCurrentTokens(),
+                request.getUseBillingKey());
 
         return ResponseEntity.ok(response);
     }

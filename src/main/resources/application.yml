@@ -31,3 +31,8 @@ app:
     # 기본값 (로컬 Next.js가 이걸 받을 거라고 가정)
     redirect-uri: http://localhost:3000/oauth/callback
 
+iamport:
+  api:
+    key: 3651385135225276
+    secret: jhpUiYMw83nsKsnFZ9cbYSlTxVla4RpVyDFCyKOwYZUGTzAIPtx080aKoGLq8ODVoyWI2UL51sU1Nsdu
+

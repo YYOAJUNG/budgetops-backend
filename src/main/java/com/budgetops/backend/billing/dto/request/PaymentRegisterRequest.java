@@ -9,4 +9,5 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class PaymentRegisterRequest {
     private String impUid;  // Iamport 거래 고유 번호
+    private String customerUid;  // 빌링키 (customer_uid)
 }
