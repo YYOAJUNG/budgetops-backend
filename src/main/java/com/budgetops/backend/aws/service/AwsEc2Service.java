@@ -271,7 +271,7 @@ public class AwsEc2Service {
         // Name 태그 찾기
         String name = instance.tags().stream()
                 .filter(tag -> "Name".equals(tag.key()))
-                .map(Tag::value)
+                .map(software.amazon.awssdk.services.ec2.model.Tag::value)
                 .findFirst()
                 .orElse("");
         
