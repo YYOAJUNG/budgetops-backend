@@ -376,6 +376,36 @@ public class AwsEc2Service {
         log.info("Stopping EC2 instance {} for account {} in region {}", instanceId, accountId, targetRegion);
         
         try (Ec2Client ec2Client = createEc2Client(account, targetRegion)) {
+            // 먼저 현재 인스턴스 상태 확인
+            DescribeInstancesRequest describeRequest = DescribeInstancesRequest.builder()
+                    .instanceIds(instanceId)
+                    .build();
+            
+            DescribeInstancesResponse describeResponse = ec2Client.describeInstances(describeRequest);
+            
+            if (describeResponse.reservations().isEmpty() || 
+                describeResponse.reservations().get(0).instances().isEmpty()) {
+                throw new ResponseStatusException(NOT_FOUND, "EC2 인스턴스를 찾을 수 없습니다.");
+            }
+            
+            Instance currentInstance = describeResponse.reservations().get(0).instances().get(0);
+            InstanceState currentState = currentInstance.state();
+            
+            // 이미 정지된 상태이거나 정지 중인 경우
+            if (currentState.name() == InstanceStateName.STOPPED || 
+                currentState.name() == InstanceStateName.STOPPING) {
+                log.info("Instance {} is already stopped or stopping. Current state: {}", 
+                        instanceId, currentState.name());
+                return convertToResponse(currentInstance);
+            }
+            
+            // 실행 중이 아닌 경우 오류
+            if (currentState.name() != InstanceStateName.RUNNING) {
+                throw new IllegalStateException(
+                    "인스턴스가 실행 중이 아닙니다. 현재 상태: " + currentState.nameAsString());
+            }
+            
+            // 정지 요청
             StopInstancesRequest request = StopInstancesRequest.builder()
                     .instanceIds(instanceId)
                     .build();
@@ -387,15 +417,19 @@ public class AwsEc2Service {
             }
             
             InstanceStateChange stateChange = response.stoppingInstances().get(0);
-            log.info("Successfully stopped EC2 instance: {}, previous state: {}, current state: {}", 
+            log.info("Successfully initiated stop for EC2 instance: {}, previous state: {}, current state: {}", 
                     instanceId, stateChange.previousState().name(), stateChange.currentState().name());
             
-            // 정지된 인스턴스 정보 조회
-            return getEc2Instance(accountId, instanceId, region);
+            // 정지 요청이 성공했으므로 현재 상태 반환 (정지 중 상태)
+            return convertToResponse(currentInstance);
             
         } catch (Ec2Exception e) {
             log.error("Failed to stop EC2 instance {}: {}", instanceId, e.awsErrorDetails().errorMessage());
             throw new RuntimeException("EC2 인스턴스 정지 실패: " + e.awsErrorDetails().errorMessage());
+        } catch (ResponseStatusException e) {
+            throw e;
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Unexpected error while stopping EC2 instance {}", instanceId, e);
             throw new RuntimeException("EC2 인스턴스 정지 중 오류 발생: " + e.getMessage());
@@ -426,6 +460,36 @@ public class AwsEc2Service {
         log.info("Starting EC2 instance {} for account {} in region {}", instanceId, accountId, targetRegion);
         
         try (Ec2Client ec2Client = createEc2Client(account, targetRegion)) {
+            // 먼저 현재 인스턴스 상태 확인
+            DescribeInstancesRequest describeRequest = DescribeInstancesRequest.builder()
+                    .instanceIds(instanceId)
+                    .build();
+            
+            DescribeInstancesResponse describeResponse = ec2Client.describeInstances(describeRequest);
+            
+            if (describeResponse.reservations().isEmpty() || 
+                describeResponse.reservations().get(0).instances().isEmpty()) {
+                throw new ResponseStatusException(NOT_FOUND, "EC2 인스턴스를 찾을 수 없습니다.");
+            }
+            
+            Instance currentInstance = describeResponse.reservations().get(0).instances().get(0);
+            InstanceState currentState = currentInstance.state();
+            
+            // 이미 실행 중이거나 시작 중인 경우
+            if (currentState.name() == InstanceStateName.RUNNING || 
+                currentState.name() == InstanceStateName.PENDING) {
+                log.info("Instance {} is already running or starting. Current state: {}", 
+                        instanceId, currentState.name());
+                return convertToResponse(currentInstance);
+            }
+            
+            // 정지된 상태가 아닌 경우 오류
+            if (currentState.name() != InstanceStateName.STOPPED) {
+                throw new IllegalStateException(
+                    "인스턴스가 정지된 상태가 아닙니다. 현재 상태: " + currentState.nameAsString());
+            }
+            
+            // 시작 요청
             StartInstancesRequest request = StartInstancesRequest.builder()
                     .instanceIds(instanceId)
                     .build();
@@ -437,15 +501,19 @@ public class AwsEc2Service {
             }
             
             InstanceStateChange stateChange = response.startingInstances().get(0);
-            log.info("Successfully started EC2 instance: {}, previous state: {}, current state: {}", 
+            log.info("Successfully initiated start for EC2 instance: {}, previous state: {}, current state: {}", 
                     instanceId, stateChange.previousState().name(), stateChange.currentState().name());
             
-            // 시작된 인스턴스 정보 조회
-            return getEc2Instance(accountId, instanceId, region);
+            // 시작 요청이 성공했으므로 현재 상태 반환 (시작 중 상태)
+            return convertToResponse(currentInstance);
             
         } catch (Ec2Exception e) {
             log.error("Failed to start EC2 instance {}: {}", instanceId, e.awsErrorDetails().errorMessage());
             throw new RuntimeException("EC2 인스턴스 시작 실패: " + e.awsErrorDetails().errorMessage());
+        } catch (ResponseStatusException e) {
+            throw e;
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Unexpected error while starting EC2 instance {}", instanceId, e);
             throw new RuntimeException("EC2 인스턴스 시작 중 오류 발생: " + e.getMessage());
