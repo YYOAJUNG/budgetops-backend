@@ -26,6 +26,10 @@ management:
       exposure:
         include: health,info
 
+jwt:
+  secret: ${JWT_SECRET}
+  token-validity-in-seconds: 86400
+
 app:
   oauth2:
     # 기본값 (로컬 Next.js가 이걸 받을 거라고 가정)
