@@ -23,11 +23,27 @@ public class CryptoKeyProvider implements InitializingBean {
 
     @Override
     public void afterPropertiesSet() {
+        // 디버깅: 환경 변수 직접 확인
+        String envKey = System.getenv("APP_CRED_KEY");
+        System.out.println("=== CryptoKeyProvider 초기화 ===");
+        System.out.println("System.getenv('APP_CRED_KEY'): " + (envKey != null ? "설정됨 (길이: " + envKey.length() + ")" : "null"));
+        System.out.println("@Value('app.crypto.key'): " + (configuredKey != null && !configuredKey.isBlank() ? "설정됨 (길이: " + configuredKey.length() + ")" : "null 또는 빈 문자열"));
+        
+        // 환경 변수에서 직접 읽기 시도 (application.yml이 제대로 로드되지 않은 경우 대비)
+        if ((configuredKey == null || configuredKey.isBlank()) && envKey != null && !envKey.isBlank()) {
+            System.out.println("경고: application.yml에서 키를 읽지 못했지만 환경 변수에서 발견했습니다. 환경 변수를 사용합니다.");
+            configuredKey = envKey;
+        }
+        
         if (configuredKey == null || configuredKey.isBlank()) {
             // 키가 설정되지 않았을 때는 빈 배열로 설정하지 않고 null로 유지
             // getKeyBytes()에서 명확한 에러 메시지 제공
             keyBytes = null;
-            System.err.println("경고: APP_CRED_KEY 환경 변수가 설정되지 않았습니다. AWS 계정 등록 시 암호화 오류가 발생할 수 있습니다.");
+            System.err.println("에러: APP_CRED_KEY 환경 변수가 설정되지 않았습니다.");
+            System.err.println("해결 방법:");
+            System.err.println("1. 환경 변수 설정: export APP_CRED_KEY='your-key-here'");
+            System.err.println("2. 또는 .env 파일에 APP_CRED_KEY=your-key-here 추가");
+            System.err.println("3. 서버 재시작");
             return;
         }
         
