@@ -15,15 +15,42 @@ spring:
   h2:
     console:
       enabled: true
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope:
+              - email
+              - profile
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          google:
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+            token-uri: https://oauth2.googleapis.com/token
+            user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
 
 server:
   port: 8080
 
 app:
   crypto:
-    key: ${APP_CRED_KEY:}
+    key: ${APP_CRED_KEY:default-dev-key-32-characters!}
   aws:
     validate: false
+  oauth2:
+    redirect-uri: https://budgetops.work/oauth/callback
+
+iamport:
+  api:
+    key: test_key
+    secret: test_secret
+
+jwt:
+  secret: ${JWT_SECRET}
+  token-validity-in-seconds: 86400  # 24시간
 
 springdoc:
   api-docs:

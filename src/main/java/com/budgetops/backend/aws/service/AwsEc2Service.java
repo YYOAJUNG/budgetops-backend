@@ -4,105 +4,153 @@ import com.budgetops.backend.aws.dto.AwsEc2InstanceResponse;
 import com.budgetops.backend.aws.entity.AwsAccount;
 import com.budgetops.backend.aws.repository.AwsAccountRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ec2.Ec2Client;
-import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest;
-import software.amazon.awssdk.services.ec2.model.Instance;
-import software.amazon.awssdk.services.ec2.model.Tag;
+import software.amazon.awssdk.services.ec2.model.*;
 
-import java.time.Duration;
-import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
-import java.util.Optional;
 
-import static org.springframework.http.HttpStatus.BAD_REQUEST;
-import static org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AwsEc2Service {
-    private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT;
-
+    
     private final AwsAccountRepository accountRepository;
-
-    @Transactional(readOnly = true)
-    public List<AwsEc2InstanceResponse> listInstances(Long accountId, String regionOverride) {
+    
+    /**
+     * 특정 AWS 계정의 EC2 인스턴스 목록 조회
+     * 
+     * @param accountId AWS 계정 ID
+     * @param region 조회할 리전 (null이면 계정의 기본 리전)
+     * @return EC2 인스턴스 목록
+     */
+    public List<AwsEc2InstanceResponse> listInstances(Long accountId, String region) {
         AwsAccount account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "계정을 찾을 수 없습니다."));
-
-        String accessKeyId = account.getAccessKeyId();
-        String secretAccessKey = account.getSecretKeyEnc();
-        if (accessKeyId == null || secretAccessKey == null) {
-            throw new ResponseStatusException(NOT_FOUND, "계정 자격 증명이 존재하지 않습니다.");
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
+        
+        if (!Boolean.TRUE.equals(account.getActive())) {
+            throw new IllegalStateException("비활성화된 계정입니다.");
         }
-
-        String effectiveRegion = (regionOverride != null && !regionOverride.isBlank())
-                ? regionOverride
-                : account.getDefaultRegion();
-        Region region = resolveRegion(effectiveRegion);
-
-        try (Ec2Client ec2 = Ec2Client.builder()
-                .region(region)
-                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKeyId, secretAccessKey)))
-                .overrideConfiguration(c -> c
-                        .apiCallAttemptTimeout(Duration.ofSeconds(10))
-                        .apiCallTimeout(Duration.ofSeconds(30)))
-                .build()) {
-
-            return ec2.describeInstancesPaginator(DescribeInstancesRequest.builder().build())
-                    .reservations().stream()
-                    .flatMap(reservation -> reservation.instances().stream())
-                    .map(this::toResponse)
-                    .toList();
-
-        } catch (SdkException ex) {
-            throw new ResponseStatusException(INTERNAL_SERVER_ERROR, "EC2 인스턴스 정보를 조회하지 못했습니다.", ex);
+        
+        String targetRegion = region != null ? region : account.getDefaultRegion();
+        if (targetRegion == null) {
+            targetRegion = "us-east-1"; // fallback
         }
-    }
-
-    private Region resolveRegion(String region) {
-        if (region == null || region.isBlank()) {
-            return Region.US_EAST_1;
-        }
-        try {
-            return Region.of(region);
-        } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(BAD_REQUEST, "지원하지 않는 AWS Region 입니다: " + region, ex);
+        
+        log.info("Fetching EC2 instances for account {} in region {}", accountId, targetRegion);
+        
+        try (Ec2Client ec2Client = createEc2Client(account, targetRegion)) {
+            DescribeInstancesRequest request = DescribeInstancesRequest.builder().build();
+            DescribeInstancesResponse response = ec2Client.describeInstances(request);
+            
+            List<AwsEc2InstanceResponse> instances = new ArrayList<>();
+            
+            for (Reservation reservation : response.reservations()) {
+                for (Instance instance : reservation.instances()) {
+                    instances.add(convertToResponse(instance));
+                }
+            }
+            
+            log.info("Found {} EC2 instances", instances.size());
+            return instances;
+            
+        } catch (Ec2Exception e) {
+            log.error("Failed to fetch EC2 instances: {}", e.awsErrorDetails().errorMessage());
+            throw new RuntimeException("EC2 인스턴스 조회 실패: " + e.awsErrorDetails().errorMessage());
+        } catch (Exception e) {
+            log.error("Unexpected error while fetching EC2 instances", e);
+            throw new RuntimeException("EC2 인스턴스 조회 중 오류 발생: " + e.getMessage());
         }
     }
-
-    private AwsEc2InstanceResponse toResponse(Instance instance) {
-        return AwsEc2InstanceResponse.builder()
-                .instanceId(instance.instanceId())
-                .name(extractNameTag(instance))
-                .instanceType(instance.instanceTypeAsString())
-                .state(instance.state() != null ? instance.state().nameAsString() : null)
-                .availabilityZone(instance.placement() != null ? instance.placement().availabilityZone() : null)
-                .publicIp(instance.publicIpAddress())
-                .privateIp(instance.privateIpAddress())
-                .launchTime(Optional.ofNullable(instance.launchTime())
-                        .map(ISO_FORMATTER::format)
-                        .orElse(null))
+    
+    /**
+     * 특정 EC2 인스턴스 상세 조회
+     */
+    public AwsEc2InstanceResponse getEc2Instance(Long accountId, String instanceId, String region) {
+        AwsAccount account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
+        
+        String targetRegion = region != null ? region : account.getDefaultRegion();
+        if (targetRegion == null) {
+            targetRegion = "us-east-1";
+        }
+        
+        try (Ec2Client ec2Client = createEc2Client(account, targetRegion)) {
+            DescribeInstancesRequest request = DescribeInstancesRequest.builder()
+                    .instanceIds(instanceId)
+                    .build();
+            
+            DescribeInstancesResponse response = ec2Client.describeInstances(request);
+            
+            if (response.reservations().isEmpty() || 
+                response.reservations().get(0).instances().isEmpty()) {
+                throw new ResponseStatusException(NOT_FOUND, "EC2 인스턴스를 찾을 수 없습니다.");
+            }
+            
+            Instance instance = response.reservations().get(0).instances().get(0);
+            return convertToResponse(instance);
+            
+        } catch (Ec2Exception e) {
+            log.error("Failed to fetch EC2 instance {}: {}", instanceId, e.awsErrorDetails().errorMessage());
+            throw new RuntimeException("EC2 인스턴스 조회 실패: " + e.awsErrorDetails().errorMessage());
+        }
+    }
+    
+    /**
+     * EC2 클라이언트 생성
+     */
+    private Ec2Client createEc2Client(AwsAccount account, String region) {
+        AwsBasicCredentials credentials = AwsBasicCredentials.create(
+                account.getAccessKeyId(),
+                account.getSecretKeyEnc() // 암호화된 값이 자동으로 복호화됨
+        );
+        
+        return Ec2Client.builder()
+                .region(Region.of(region))
+                .credentialsProvider(StaticCredentialsProvider.create(credentials))
                 .build();
     }
-
-    private String extractNameTag(Instance instance) {
-        if (instance.tags() == null) {
-            return null;
-        }
-        return instance.tags().stream()
-                .filter(tag -> "Name".equalsIgnoreCase(tag.key()))
+    
+    /**
+     * EC2 Instance를 Response DTO로 변환
+     */
+    private AwsEc2InstanceResponse convertToResponse(Instance instance) {
+        // Name 태그 찾기
+        String name = instance.tags().stream()
+                .filter(tag -> "Name".equals(tag.key()))
                 .map(Tag::value)
                 .findFirst()
-                .orElse(null);
+                .orElse("");
+        
+        // 시작 시간 포맷팅
+        String launchTime = "";
+        if (instance.launchTime() != null) {
+            launchTime = instance.launchTime().toString();
+        }
+        
+        // Instance Type 값 변환
+        String instanceType = "";
+        if (instance.instanceType() != null) {
+            instanceType = instance.instanceTypeAsString();
+        }
+        
+        return AwsEc2InstanceResponse.builder()
+                .instanceId(instance.instanceId())
+                .name(name)
+                .instanceType(instanceType)
+                .state(instance.state() != null ? instance.state().nameAsString() : "")
+                .availabilityZone(instance.placement() != null ? instance.placement().availabilityZone() : "")
+                .publicIp(instance.publicIpAddress() != null ? instance.publicIpAddress() : "")
+                .privateIp(instance.privateIpAddress() != null ? instance.privateIpAddress() : "")
+                .launchTime(launchTime)
+                .build();
     }
 }
-
