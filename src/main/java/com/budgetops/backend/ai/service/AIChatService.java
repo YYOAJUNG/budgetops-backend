@@ -254,26 +254,18 @@ public class AIChatService {
                         .contentType(MediaType.APPLICATION_JSON)
                         .bodyValue(requestBody)
                         .retrieve()
-                        .onStatus(status -> status.is5xxServerError() || status.value() == 503, 
-                                clientResponse -> {
-                                    log.error("Gemini API 서버 오류: HTTP {}", clientResponse.statusCode());
-                                    return clientResponse.bodyToMono(String.class)
-                                            .flatMap(body -> {
-                                                log.error("Gemini API 오류 응답 본문: {}", body);
-                                                return reactor.core.publisher.Mono.error(
-                                                        new RuntimeException("Gemini API가 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.")
-                                                );
-                                            });
-                                })
                         .bodyToMono(Map.class)
                         .timeout(Duration.ofSeconds(30))
                         .block();
             } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+                log.error("Gemini API HTTP 오류: {} - {}", e.getStatusCode(), e.getMessage());
                 if (e.getStatusCode().value() == 503) {
-                    log.error("Gemini API 503 오류: {}", e.getMessage());
                     throw new RuntimeException("Gemini API가 일시적으로 과부하 상태입니다. 잠시 후 다시 시도해주세요.", e);
                 }
-                throw e;
+                throw new RuntimeException("Gemini API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
+            } catch (Exception e) {
+                log.error("Gemini API 호출 중 예외 발생", e);
+                throw new RuntimeException("Gemini API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
             }
             
             if (response == null) {
