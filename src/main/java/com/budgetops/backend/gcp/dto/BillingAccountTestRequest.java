@@ -5,8 +5,8 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class BillingAccountIdRequest {
+public class BillingAccountTestRequest {
     private String billingAccountId;
+    private String serviceAccountKeyJson;
 }
-
 
