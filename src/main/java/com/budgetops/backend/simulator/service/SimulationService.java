@@ -89,13 +89,20 @@ public class SimulationService {
                     continue;
                 }
                 
-                // 현재 비용 계산
+                // 현재 비용 계산 (월간 전체 비용)
                 double currentCost = costEngine.calculateCurrentCost(
                         pricing.getUnitPrice(), 1.0, pricing.getUnit());
                 
                 // Off-hours 절감액 계산
-                double savings = costEngine.calculateOffHoursSavings(
-                        pricing.getUnitPrice(), dailyOffHours);
+                // 주중(월~금)만 적용하므로 22일 기준
+                double monthlyOffHours = dailyOffHours * 22; // 주중 22일
+                double savings = (monthlyOffHours / (24.0 * 30.0)) * currentCost;
+                
+                // 절감액이 음수가 되지 않도록 보장
+                savings = Math.max(0.0, savings);
+                
+                // 변경 후 비용 계산
+                double newCost = Math.max(0.0, currentCost - savings);
                 
                 // 리스크 스코어 계산
                 double riskScore = costEngine.calculateRiskScore(metrics, "medium");
@@ -112,7 +119,7 @@ public class SimulationService {
                 SimulationResult result = SimulationResult.builder()
                         .scenarioName(scenarioName)
                         .currentCost(currentCost)
-                        .newCost(currentCost - savings)
+                        .newCost(newCost)
                         .savings(savings)
                         .riskScore(riskScore)
                         .priorityScore(priorityScore)
