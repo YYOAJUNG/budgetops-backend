@@ -112,9 +112,11 @@ public class SimulationService {
                 
                 // 시나리오 생성
                 String scenarioName = String.format("Off-hours 스케줄링: %s", resourceId);
+                // 절감액이 0보다 작으면 0으로 표시
+                double displaySavings = Math.max(0.0, savings);
                 String description = String.format(
                         "주중 %s~%s 중단으로 월 약 %.0f원 절감 예상",
-                        params.getStopAt(), params.getStartAt(), savings);
+                        params.getStopAt(), params.getStartAt(), displaySavings);
                 
                 SimulationResult result = SimulationResult.builder()
                         .scenarioName(scenarioName)
@@ -185,9 +187,11 @@ public class SimulationService {
                     
                     String scenarioName = String.format("Commitment 최적화 (%d%%): %s", 
                             (int)(commitLevel * 100), resourceId);
+                    // 절감액이 0보다 작으면 0으로 표시
+                    double displaySavings = Math.max(0.0, savings);
                     String description = String.format(
                             "%d년 약정, %d%% 커버리지로 월 약 %.0f원 절감 예상",
-                            params.getCommitYears(), (int)(commitLevel * 100), savings);
+                            params.getCommitYears(), (int)(commitLevel * 100), displaySavings);
                     
                     SimulationResult result = SimulationResult.builder()
                             .scenarioName(scenarioName)
@@ -251,9 +255,11 @@ public class SimulationService {
                     double priorityScore = costEngine.calculatePriorityScore(savings, riskScore, 1);
                     
                     String scenarioName = String.format("Storage 수명주기 (%d일): %s", retention, resourceId);
+                    // 절감액이 0보다 작으면 0으로 표시
+                    double displaySavings = Math.max(0.0, savings);
                     String description = String.format(
                             "%d일 미접근 객체를 %s로 이동하여 월 약 %.0f원 절감 예상",
-                            retention, params.getTargetTier(), savings);
+                            retention, params.getTargetTier(), displaySavings);
                     
                     SimulationResult result = SimulationResult.builder()
                             .scenarioName(scenarioName)

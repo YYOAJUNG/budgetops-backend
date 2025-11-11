@@ -133,10 +133,22 @@ public class RecommendationService {
                     .description(basisDescription) // 룰 기반 상세 설명으로 교체
                     .build();
             
+            // 절감액이 음수인 경우 0으로 처리
+            double safeSavings = Math.max(0.0, result.getSavings());
+            
+            // description에서 음수 절감액 제거
+            String safeDescription = result.getDescription();
+            if (safeDescription != null) {
+                // "-1원", "-123원" 같은 패턴을 "0원"으로 변경
+                safeDescription = safeDescription.replaceAll("월 약 -\\d+원", "월 약 0원");
+                safeDescription = safeDescription.replaceAll("약 -\\d+원", "약 0원");
+                safeDescription = safeDescription.replaceAll("-\\d+원 절감", "0원 절감");
+            }
+            
             recommendations.add(RecommendationResponse.builder()
-                    .title(generateTitle(actionType, result.getSavings()))
-                    .description(result.getDescription()) // 기본 설명 유지
-                    .estimatedSavings(result.getSavings())
+                    .title(generateTitle(actionType, safeSavings))
+                    .description(safeDescription) // 안전한 설명 사용
+                    .estimatedSavings(safeSavings)
                     .actionType(actionType.getCode())
                     .scenario(enhancedResult) // 룰 기반 설명이 포함된 시나리오
                     .build());
@@ -197,10 +209,12 @@ public class RecommendationService {
      * 액션 타입별 제목 생성
      */
     private String generateTitle(ActionType actionType, Double savings) {
+        // 절감액이 음수이면 0으로 처리
+        double safeSavings = Math.max(0.0, savings != null ? savings : 0.0);
         return switch (actionType) {
-            case OFFHOURS -> String.format("Off-hours로 월 최대 %.0f원 절감 예상", savings);
-            case COMMITMENT -> String.format("커밋 70%%로 전환 시 %.0f원 절감", savings);
-            case STORAGE -> String.format("90일 미접근 스토리지 아카이빙으로 %.0f원 절감", savings);
+            case OFFHOURS -> String.format("Off-hours로 월 최대 %.0f원 절감 예상", safeSavings);
+            case COMMITMENT -> String.format("커밋 70%%로 전환 시 %.0f원 절감", safeSavings);
+            case STORAGE -> String.format("90일 미접근 스토리지 아카이빙으로 %.0f원 절감", safeSavings);
             default -> "비용 최적화 추천";
         };
     }
