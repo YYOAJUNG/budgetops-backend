@@ -31,6 +31,7 @@ dependencies {
 	implementation 'software.amazon.awssdk:sts:2.25.65'
 	implementation 'software.amazon.awssdk:ec2:2.25.65'
 	implementation 'software.amazon.awssdk:cloudwatch:2.25.65'
+	implementation 'software.amazon.awssdk:costexplorer:2.25.65'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
