@@ -35,3 +35,9 @@ app:
     # 기본값 (로컬 Next.js가 이걸 받을 거라고 가정)
     redirect-uri: https://budgetops.work/oauth/callback
 
+gemini:
+  api:
+    key: ${GEMINI_API_KEY:}
+  model:
+    name: ${GEMINI_MODEL_NAME:gemini-2.5-flash}
+
