@@ -195,6 +195,14 @@ public class GcpAccountService {
                 // 권한/구성이 아직 안되었을 수 있으므로 무시하고 계속 저장
             }
 
+            // 서비스 계정 ID 중복 체크
+            java.util.Optional<GcpAccount> existingAccount = gcpAccountRepository.findByServiceAccountId(request.getServiceAccountId());
+            if (existingAccount.isPresent()) {
+                res.setOk(false);
+                res.setMessage("이미 등록된 서비스 계정 ID입니다. 서비스 계정 ID: " + request.getServiceAccountId());
+                return res;
+            }
+
             // 빌링 계정 ID 형식 검증 및 정규화
             String billingAccountId = null;
             if (request.getBillingAccountId() != null && !request.getBillingAccountId().isBlank()) {
