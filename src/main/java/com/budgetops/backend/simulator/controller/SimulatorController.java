@@ -2,12 +2,15 @@ package com.budgetops.backend.simulator.controller;
 
 import com.budgetops.backend.simulator.dto.*;
 import com.budgetops.backend.simulator.service.ProposalService;
+import com.budgetops.backend.simulator.service.RecommendationService;
 import com.budgetops.backend.simulator.service.SimulationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * UCAS (Universal Cost Action Simulator) API 컨트롤러
@@ -20,6 +23,7 @@ public class SimulatorController {
     
     private final SimulationService simulationService;
     private final ProposalService proposalService;
+    private final RecommendationService recommendationService;
     
     /**
      * 시뮬레이션 실행
@@ -74,6 +78,16 @@ public class SimulatorController {
     public ResponseEntity<ProposalResponse> rejectProposal(@PathVariable String proposalId) {
         ProposalResponse response = proposalService.rejectProposal(proposalId);
         return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * Top 3 추천 액션 조회
+     * GET /api/simulator/recommendations
+     */
+    @GetMapping("/recommendations")
+    public ResponseEntity<List<RecommendationResponse>> getRecommendations() {
+        List<RecommendationResponse> recommendations = recommendationService.getTopRecommendations();
+        return ResponseEntity.ok(recommendations);
     }
 }
 
