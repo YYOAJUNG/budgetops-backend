@@ -61,7 +61,15 @@ public class AwsAccountService {
             account.setActive(Boolean.TRUE); // 재활성화
             
             AwsAccount saved = accountRepo.save(account);
-            log.info("Successfully reactivated account with id: {}", saved.getId());
+            log.info("Successfully reactivated account with id: {}, name: {}, active: {}, defaultRegion: {}", 
+                    saved.getId(), saved.getName(), saved.getActive(), saved.getDefaultRegion());
+            
+            // 재활성화 후 즉시 활성 상태 확인
+            AwsAccount verifyAccount = accountRepo.findById(saved.getId()).orElse(null);
+            if (verifyAccount != null) {
+                log.info("Verification: Account {} is now active: {}", verifyAccount.getId(), verifyAccount.getActive());
+            }
+            
             return saved;
         }
 
