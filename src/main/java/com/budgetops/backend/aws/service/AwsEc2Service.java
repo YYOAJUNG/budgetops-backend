@@ -60,20 +60,33 @@ public class AwsEc2Service {
             
             List<AwsEc2InstanceResponse> instances = new ArrayList<>();
             
-            for (Reservation reservation : response.reservations()) {
-                for (Instance instance : reservation.instances()) {
-                    instances.add(convertToResponse(instance));
+            if (response.reservations() != null) {
+                for (Reservation reservation : response.reservations()) {
+                    if (reservation.instances() != null) {
+                        for (Instance instance : reservation.instances()) {
+                            instances.add(convertToResponse(instance));
+                        }
+                    }
                 }
             }
             
-            log.info("Found {} EC2 instances", instances.size());
+            log.info("Found {} EC2 instances in region {} for account {}", instances.size(), targetRegion, accountId);
             return instances;
             
         } catch (Ec2Exception e) {
-            log.error("Failed to fetch EC2 instances: {}", e.awsErrorDetails().errorMessage());
-            throw new RuntimeException("EC2 인스턴스 조회 실패: " + e.awsErrorDetails().errorMessage());
+            String errorCode = e.awsErrorDetails() != null ? e.awsErrorDetails().errorCode() : "Unknown";
+            String errorMessage = e.awsErrorDetails() != null ? e.awsErrorDetails().errorMessage() : e.getMessage();
+            log.error("Failed to fetch EC2 instances for account {} in region {}: {} - {}", 
+                    accountId, targetRegion, errorCode, errorMessage);
+            
+            // 권한 부족인 경우 더 명확한 메시지
+            if ("UnauthorizedOperation".equals(errorCode) || "AccessDenied".equals(errorCode)) {
+                throw new RuntimeException("EC2 인스턴스 조회 권한이 없습니다. IAM 권한을 확인하세요: " + errorMessage);
+            }
+            throw new RuntimeException("EC2 인스턴스 조회 실패: " + errorMessage);
         } catch (Exception e) {
-            log.error("Unexpected error while fetching EC2 instances", e);
+            log.error("Unexpected error while fetching EC2 instances for account {} in region {}: {}", 
+                    accountId, targetRegion, e.getMessage(), e);
             throw new RuntimeException("EC2 인스턴스 조회 중 오류 발생: " + e.getMessage());
         }
     }

@@ -62,28 +62,57 @@ public class AwsCostService {
             
             List<DailyCost> dailyCosts = new ArrayList<>();
             
+            if (response.resultsByTime() == null || response.resultsByTime().isEmpty()) {
+                log.warn("No cost data returned for account {} from {} to {}", accountId, startDate, endDate);
+                return dailyCosts; // 빈 리스트 반환
+            }
+            
             for (ResultByTime result : response.resultsByTime()) {
                 String date = result.timePeriod().start();
                 double totalCost = 0.0;
                 List<ServiceCost> serviceCosts = new ArrayList<>();
                 
-                for (Group group : result.groups()) {
-                    String service = group.keys().get(0);
-                    String amount = group.metrics().get("BlendedCost").amount();
-                    double cost = Double.parseDouble(amount);
-                    totalCost += cost;
-                    
-                    if (cost > 0) {
-                        serviceCosts.add(new ServiceCost(service, cost));
+                // groups가 null이거나 비어있을 수 있음 (비용이 없는 경우)
+                if (result.groups() != null && !result.groups().isEmpty()) {
+                    for (Group group : result.groups()) {
+                        if (group.keys() != null && !group.keys().isEmpty() && 
+                            group.metrics() != null && group.metrics().containsKey("BlendedCost")) {
+                            try {
+                                String service = group.keys().get(0);
+                                String amount = group.metrics().get("BlendedCost").amount();
+                                if (amount != null && !amount.isEmpty()) {
+                                    double cost = Double.parseDouble(amount);
+                                    totalCost += cost;
+                                    
+                                    if (cost > 0) {
+                                        serviceCosts.add(new ServiceCost(service, cost));
+                                    }
+                                }
+                            } catch (NumberFormatException e) {
+                                log.warn("Failed to parse cost amount for service: {}", e.getMessage());
+                            }
+                        }
                     }
                 }
                 
                 dailyCosts.add(new DailyCost(date, totalCost, serviceCosts));
             }
             
-            log.info("Successfully fetched {} days of cost data for account {}", dailyCosts.size(), accountId);
+            log.info("Successfully fetched {} days of cost data for account {} (total cost: {})", 
+                    dailyCosts.size(), accountId, 
+                    dailyCosts.stream().mapToDouble(DailyCost::totalCost).sum());
             return dailyCosts;
             
+        } catch (software.amazon.awssdk.services.costexplorer.model.CostExplorerException e) {
+            log.error("AWS Cost Explorer API error for account {}: {} - {}", 
+                    accountId, e.awsErrorDetails().errorCode(), e.awsErrorDetails().errorMessage());
+            // 권한 부족이나 Cost Explorer 미활성화 등의 경우 빈 리스트 반환
+            if (e.awsErrorDetails().errorCode().equals("AccessDeniedException") ||
+                e.awsErrorDetails().errorCode().equals("ValidationException")) {
+                log.warn("Cost Explorer access denied or validation error. Returning empty cost data.");
+                return new ArrayList<>();
+            }
+            throw new RuntimeException("AWS 비용 조회 실패: " + e.awsErrorDetails().errorMessage());
         } catch (Exception e) {
             log.error("Failed to fetch AWS costs for account {}: {}", accountId, e.getMessage(), e);
             throw new RuntimeException("AWS 비용 조회 실패: " + e.getMessage());
