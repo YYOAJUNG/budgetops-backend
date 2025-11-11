@@ -60,8 +60,17 @@ public class AIChatService {
         userMessage.put("parts", request.getMessage());
         history.add(userMessage);
         
-        // 시스템 프롬프트 생성
-        String systemPrompt = buildSystemPrompt();
+        // 시스템 프롬프트 생성 (실패해도 기본 프롬프트 사용)
+        String systemPrompt;
+        try {
+            systemPrompt = buildSystemPrompt();
+        } catch (Exception e) {
+            log.error("Failed to build system prompt, using default", e);
+            systemPrompt = "당신은 BudgetOps의 클라우드 비용 최적화 전문 AI 어시스턴트입니다. " +
+                    "사용자의 질문에 친절하고 전문적으로 답변하세요. " +
+                    "비용 최적화와 관련된 구체적인 조언을 제공하세요. " +
+                    "답변은 한국어로 작성하고, 마크다운 문법을 사용하지 마세요.";
+        }
         
         try {
             // Gemini API 호출
@@ -102,28 +111,34 @@ public class AIChatService {
             if (!activeAccounts.isEmpty()) {
                 prompt.append("=== 사용자 클라우드 리소스 및 비용 정보 ===\n\n");
                 
-                // 비용 정보 조회 (최근 30일)
-                java.time.LocalDate endDate = java.time.LocalDate.now().plusDays(1);
-                java.time.LocalDate startDate = endDate.minusDays(30);
-                String startDateStr = startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
-                String endDateStr = endDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
-                
-                List<AwsCostService.AccountCost> accountCosts = awsCostService.getAllAccountsCosts(startDateStr, endDateStr);
-                double totalCost = accountCosts.stream().mapToDouble(AwsCostService.AccountCost::totalCost).sum();
-                
-                prompt.append("📊 최근 30일 비용 요약:\n");
-                prompt.append(String.format("- 전체 AWS 비용: $%.2f USD\n", totalCost));
-                
-                if (!accountCosts.isEmpty()) {
-                    prompt.append("- 계정별 비용:\n");
-                    for (AwsCostService.AccountCost accountCost : accountCosts) {
-                        prompt.append(String.format("  • %s: $%.2f USD\n", 
-                                accountCost.accountName(), accountCost.totalCost()));
+                // 비용 정보 조회 (최근 30일) - 실패해도 계속 진행
+                try {
+                    java.time.LocalDate endDate = java.time.LocalDate.now().plusDays(1);
+                    java.time.LocalDate startDate = endDate.minusDays(30);
+                    String startDateStr = startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
+                    String endDateStr = endDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
+                    
+                    List<AwsCostService.AccountCost> accountCosts = awsCostService.getAllAccountsCosts(startDateStr, endDateStr);
+                    double totalCost = accountCosts.stream().mapToDouble(AwsCostService.AccountCost::totalCost).sum();
+                    
+                    prompt.append("📊 최근 30일 비용 요약:\n");
+                    prompt.append(String.format("- 전체 AWS 비용: $%.2f USD\n", totalCost));
+                    
+                    if (!accountCosts.isEmpty()) {
+                        prompt.append("- 계정별 비용:\n");
+                        for (AwsCostService.AccountCost accountCost : accountCosts) {
+                            prompt.append(String.format("  • %s: $%.2f USD\n", 
+                                    accountCost.accountName(), accountCost.totalCost()));
+                        }
+                    } else {
+                        prompt.append("- 계정별 비용 데이터를 불러올 수 없습니다 (Cost Explorer 권한 확인 필요)\n");
                     }
-                } else {
-                    prompt.append("- 계정별 비용 데이터를 불러올 수 없습니다 (Cost Explorer 권한 확인 필요)\n");
+                    prompt.append("\n");
+                } catch (Exception e) {
+                    log.warn("Failed to fetch cost information for prompt: {}", e.getMessage());
+                    prompt.append("📊 최근 30일 비용 요약:\n");
+                    prompt.append("- 비용 정보를 불러올 수 없습니다 (Cost Explorer 권한 확인 필요)\n\n");
                 }
-                prompt.append("\n");
                 
                 // 리소스 정보
                 prompt.append("🖥️ AWS EC2 리소스 요약:\n");
