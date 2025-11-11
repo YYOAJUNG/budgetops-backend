@@ -181,7 +181,10 @@ public class AIChatService {
         prompt.append("사용자의 질문에 친절하고 전문적으로 답변하세요. ");
         prompt.append("위의 비용 정보와 리소스 정보를 참고하여 구체적이고 실용적인 최적화 조언을 제시하세요. ");
         prompt.append("사용자가 특정 서비스나 계정에 대해 질문하면, 해당 정보를 활용하여 답변하세요. ");
-        prompt.append("답변은 한국어로 작성하세요.");
+        prompt.append("답변은 한국어로 작성하세요. ");
+        prompt.append("중요: 답변에서 마크다운 문법을 사용하지 마세요. ");
+        prompt.append("---, ###, **, # 등의 마크다운 기호를 사용하지 말고 일반 텍스트로만 작성하세요. ");
+        prompt.append("제목이나 강조가 필요하면 줄바꿈과 일반 텍스트로 표현하세요.");
         
         return prompt.toString();
     }
