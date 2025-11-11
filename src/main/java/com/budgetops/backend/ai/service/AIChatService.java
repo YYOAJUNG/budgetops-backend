@@ -247,14 +247,34 @@ public class AIChatService {
             
             log.debug("Calling Gemini API: {}", url);
             
-            Map<String, Object> response = webClient.post()
-                    .uri(url)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(requestBody)
-                    .retrieve()
-                    .bodyToMono(Map.class)
-                    .timeout(Duration.ofSeconds(30))
-                    .block();
+            Map<String, Object> response;
+            try {
+                response = webClient.post()
+                        .uri(url)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .bodyValue(requestBody)
+                        .retrieve()
+                        .onStatus(status -> status.is5xxServerError() || status.value() == 503, 
+                                clientResponse -> {
+                                    log.error("Gemini API 서버 오류: HTTP {}", clientResponse.statusCode());
+                                    return clientResponse.bodyToMono(String.class)
+                                            .flatMap(body -> {
+                                                log.error("Gemini API 오류 응답 본문: {}", body);
+                                                return reactor.core.publisher.Mono.error(
+                                                        new RuntimeException("Gemini API가 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.")
+                                                );
+                                            });
+                                })
+                        .bodyToMono(Map.class)
+                        .timeout(Duration.ofSeconds(30))
+                        .block();
+            } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+                if (e.getStatusCode().value() == 503) {
+                    log.error("Gemini API 503 오류: {}", e.getMessage());
+                    throw new RuntimeException("Gemini API가 일시적으로 과부하 상태입니다. 잠시 후 다시 시도해주세요.", e);
+                }
+                throw e;
+            }
             
             if (response == null) {
                 throw new RuntimeException("Gemini API 응답이 null입니다.");
@@ -265,6 +285,15 @@ public class AIChatService {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> error = (Map<String, Object>) response.get("error");
                 String errorMessage = (String) error.get("message");
+                String errorCode = error.get("code") != null ? error.get("code").toString() : "UNKNOWN";
+                
+                // 503 오류인 경우 사용자 친화적인 메시지 제공
+                if ("503".equals(errorCode) || errorMessage != null && errorMessage.contains("overloaded")) {
+                    log.warn("Gemini API 과부하: {}", errorMessage);
+                    throw new RuntimeException("Gemini API가 일시적으로 과부하 상태입니다. 잠시 후 다시 시도해주세요.");
+                }
+                
+                log.error("Gemini API 오류 [{}]: {}", errorCode, errorMessage);
                 throw new RuntimeException("Gemini API 오류: " + errorMessage);
             }
             
