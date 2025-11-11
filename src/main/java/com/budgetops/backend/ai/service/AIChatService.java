@@ -20,7 +20,6 @@ import java.util.*;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AIChatService {
     
     private final GeminiConfig geminiConfig;
