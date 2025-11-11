@@ -1,0 +1,38 @@
+name: AWS S3 최적화
+csp: AWS
+service: S3
+rules:
+  - id: lifecycle_policy
+    title: 라이프사이클 정책 적용
+    description: 자주 접근하지 않는 데이터는 저렴한 스토리지 클래스로 자동 전환합니다.
+    conditions:
+      - metric: last_access
+        threshold: 30d
+      - metric: access_frequency
+        threshold: 1
+        period: 90d
+    recommendation: "30일 이상 접근하지 않은 객체는 Standard-IA로, 90일 이상 접근하지 않은 객체는 Glacier로 자동 전환하는 라이프사이클 정책을 설정하세요."
+    cost_saving: "월 약 50-68% 스토리지 비용 절감"
+    
+  - id: delete_old_versions
+    title: 오래된 버전 삭제
+    description: 버전 관리가 활성화된 버킷에서 오래된 버전을 정리합니다.
+    conditions:
+      - metric: version_age
+        threshold: 90d
+      - metric: current_version_exists
+        value: true
+    recommendation: "90일 이상 된 이전 버전은 자동으로 삭제하는 정책을 설정하여 불필요한 스토리지 비용을 절감하세요."
+    cost_saving: "월 약 30-50% 버전 관리 비용 절감"
+    
+  - id: compress_objects
+    title: 객체 압축
+    description: 압축 가능한 객체는 압축하여 스토리지 비용을 절감합니다.
+    conditions:
+      - metric: content_type
+        value: "text/plain, application/json, text/html, application/xml"
+      - metric: object_size
+        threshold: 1MB
+    recommendation: "텍스트 기반 파일은 gzip 압축을 적용하여 스토리지 사용량을 줄이세요."
+    cost_saving: "월 약 60-80% 스토리지 비용 절감 (압축률에 따라)"
+
