@@ -5,8 +5,8 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class ServiceAccountKeyUploadRequest {
+public class ServiceAccountTestRequest {
+    private String serviceAccountId;
     private String serviceAccountKeyJson;
 }
-
 
