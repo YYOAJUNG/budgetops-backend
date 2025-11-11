@@ -1,5 +1,6 @@
-package com.budgetops.backend.billing.entity;
+package com.budgetops.backend.domain.user.entity;
 
+import com.budgetops.backend.billing.entity.Workspace;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -27,9 +28,6 @@ public class Member {
 
     @Column(nullable = false)
     private String name;
-
-    @Column(nullable = false)
-    private String password;
 
     @ManyToMany(mappedBy = "members")
     @Builder.Default
