@@ -1,6 +1,8 @@
 package com.budgetops.backend.aws.service;
 
+import com.budgetops.backend.aws.dto.AwsEc2InstanceCreateRequest;
 import com.budgetops.backend.aws.dto.AwsEc2InstanceResponse;
+import com.budgetops.backend.aws.dto.AwsEc2MetricsResponse;
 import com.budgetops.backend.aws.entity.AwsAccount;
 import com.budgetops.backend.aws.repository.AwsAccountRepository;
 import lombok.RequiredArgsConstructor;
@@ -10,9 +12,13 @@ import org.springframework.web.server.ResponseStatusException;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.cloudwatch.CloudWatchClient;
+import software.amazon.awssdk.services.cloudwatch.model.*;
 import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.ec2.model.*;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -106,6 +112,145 @@ public class AwsEc2Service {
     }
     
     /**
+     * EC2 인스턴스의 CloudWatch 메트릭 조회
+     * 
+     * @param accountId AWS 계정 ID
+     * @param instanceId EC2 인스턴스 ID
+     * @param region 리전 (null이면 계정의 기본 리전)
+     * @param hours 조회할 시간 범위 (기본값: 1시간)
+     * @return 메트릭 데이터 (CPU, NetworkIn, NetworkOut, MemoryUtilization)
+     */
+    public AwsEc2MetricsResponse getInstanceMetrics(Long accountId, String instanceId, String region, Integer hours) {
+        AwsAccount account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
+        
+        if (!Boolean.TRUE.equals(account.getActive())) {
+            throw new IllegalStateException("비활성화된 계정입니다.");
+        }
+        
+        String targetRegion = region != null ? region : account.getDefaultRegion();
+        if (targetRegion == null) {
+            targetRegion = "us-east-1";
+        }
+        
+        int hoursToQuery = hours != null && hours > 0 ? hours : 1;
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(hoursToQuery, ChronoUnit.HOURS);
+        
+        log.info("Fetching metrics for EC2 instance {} in region {} for the last {} hours", 
+                instanceId, targetRegion, hoursToQuery);
+        
+        try (CloudWatchClient cloudWatchClient = createCloudWatchClient(account, targetRegion)) {
+            // CPU Utilization
+            List<AwsEc2MetricsResponse.MetricDataPoint> cpuMetrics = getMetricStatistics(
+                    cloudWatchClient, instanceId, "CPUUtilization", "Percent", startTime, endTime);
+            
+            // Network In
+            List<AwsEc2MetricsResponse.MetricDataPoint> networkInMetrics = getMetricStatistics(
+                    cloudWatchClient, instanceId, "NetworkIn", "Bytes", startTime, endTime);
+            
+            // Network Out
+            List<AwsEc2MetricsResponse.MetricDataPoint> networkOutMetrics = getMetricStatistics(
+                    cloudWatchClient, instanceId, "NetworkOut", "Bytes", startTime, endTime);
+            
+            // Memory Utilization (CloudWatch Agent가 설치된 경우에만 사용 가능)
+            List<AwsEc2MetricsResponse.MetricDataPoint> memoryMetrics = getMetricStatisticsWithNamespace(
+                    cloudWatchClient, instanceId, "CWAgent", "mem_used_percent", "Percent", startTime, endTime);
+            
+            return AwsEc2MetricsResponse.builder()
+                    .instanceId(instanceId)
+                    .region(targetRegion)
+                    .cpuUtilization(cpuMetrics)
+                    .networkIn(networkInMetrics)
+                    .networkOut(networkOutMetrics)
+                    .memoryUtilization(memoryMetrics)
+                    .build();
+            
+        } catch (CloudWatchException e) {
+            log.error("Failed to fetch CloudWatch metrics for instance {}: {}", 
+                    instanceId, e.awsErrorDetails().errorMessage());
+            throw new RuntimeException("메트릭 조회 실패: " + e.awsErrorDetails().errorMessage());
+        } catch (Exception e) {
+            log.error("Unexpected error while fetching metrics for instance {}", instanceId, e);
+            throw new RuntimeException("메트릭 조회 중 오류 발생: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * CloudWatch에서 특정 메트릭의 통계 데이터 조회 (AWS/EC2 네임스페이스)
+     */
+    private List<AwsEc2MetricsResponse.MetricDataPoint> getMetricStatistics(
+            CloudWatchClient cloudWatchClient,
+            String instanceId,
+            String metricName,
+            String unit,
+            Instant startTime,
+            Instant endTime) {
+        return getMetricStatisticsWithNamespace(
+                cloudWatchClient, instanceId, "AWS/EC2", metricName, unit, startTime, endTime);
+    }
+    
+    /**
+     * CloudWatch에서 특정 메트릭의 통계 데이터 조회 (네임스페이스 지정 가능)
+     */
+    private List<AwsEc2MetricsResponse.MetricDataPoint> getMetricStatisticsWithNamespace(
+            CloudWatchClient cloudWatchClient,
+            String instanceId,
+            String namespace,
+            String metricName,
+            String unit,
+            Instant startTime,
+            Instant endTime) {
+        
+        try {
+            GetMetricStatisticsRequest request = GetMetricStatisticsRequest.builder()
+                    .namespace(namespace)
+                    .metricName(metricName)
+                    .dimensions(Dimension.builder()
+                            .name("InstanceId")
+                            .value(instanceId)
+                            .build())
+                    .startTime(startTime)
+                    .endTime(endTime)
+                    .period(300) // 5분 간격
+                    .statistics(Statistic.AVERAGE)
+                    .build();
+            
+            GetMetricStatisticsResponse response = cloudWatchClient.getMetricStatistics(request);
+            
+            return response.datapoints().stream()
+                    .map(datapoint -> AwsEc2MetricsResponse.MetricDataPoint.builder()
+                            .timestamp(datapoint.timestamp().toString())
+                            .value(datapoint.average())
+                            .unit(unit)
+                            .build())
+                    .sorted((a, b) -> a.getTimestamp().compareTo(b.getTimestamp()))
+                    .collect(Collectors.toList());
+                    
+        } catch (CloudWatchException e) {
+            // 메트릭이 없는 경우 (예: MemoryUtilization은 CloudWatch Agent 필요)
+            log.warn("Metric {} in namespace {} not available for instance {}: {}", 
+                    metricName, namespace, instanceId, e.awsErrorDetails().errorMessage());
+            return new ArrayList<>();
+        }
+    }
+    
+    /**
+     * CloudWatch 클라이언트 생성
+     */
+    private CloudWatchClient createCloudWatchClient(AwsAccount account, String region) {
+        AwsBasicCredentials credentials = AwsBasicCredentials.create(
+                account.getAccessKeyId(),
+                account.getSecretKeyEnc() // 암호화된 값이 자동으로 복호화됨
+        );
+        
+        return CloudWatchClient.builder()
+                .region(Region.of(region))
+                .credentialsProvider(StaticCredentialsProvider.create(credentials))
+                .build();
+    }
+    
+    /**
      * EC2 클라이언트 생성
      */
     private Ec2Client createEc2Client(AwsAccount account, String region) {
@@ -121,13 +266,314 @@ public class AwsEc2Service {
     }
     
     /**
+     * EC2 인스턴스 생성
+     * 
+     * @param accountId AWS 계정 ID
+     * @param request 인스턴스 생성 요청
+     * @param region 리전 (null이면 계정의 기본 리전)
+     * @return 생성된 인스턴스 정보
+     */
+    public AwsEc2InstanceResponse createInstance(Long accountId, AwsEc2InstanceCreateRequest request, String region) {
+        AwsAccount account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
+        
+        if (!Boolean.TRUE.equals(account.getActive())) {
+            throw new IllegalStateException("비활성화된 계정입니다.");
+        }
+        
+        String targetRegion = region != null ? region : account.getDefaultRegion();
+        if (targetRegion == null) {
+            targetRegion = "us-east-1";
+        }
+        
+        log.info("Creating EC2 instance for account {} in region {}", accountId, targetRegion);
+        
+        try (Ec2Client ec2Client = createEc2Client(account, targetRegion)) {
+            RunInstancesRequest.Builder requestBuilder = RunInstancesRequest.builder()
+                    .imageId(request.getImageId())
+                    .instanceType(InstanceType.fromValue(request.getInstanceType()))
+                    .minCount(request.getMinCount() != null ? request.getMinCount() : 1)
+                    .maxCount(request.getMaxCount() != null ? request.getMaxCount() : 1);
+            
+            // 키 페어 설정
+            if (request.getKeyPairName() != null && !request.getKeyPairName().isBlank()) {
+                requestBuilder.keyName(request.getKeyPairName());
+            }
+            
+            // 보안 그룹 설정
+            if (request.getSecurityGroupId() != null && !request.getSecurityGroupId().isBlank()) {
+                requestBuilder.securityGroupIds(java.util.Arrays.asList(request.getSecurityGroupId()));
+            }
+            
+            // 서브넷 설정
+            if (request.getSubnetId() != null && !request.getSubnetId().isBlank()) {
+                requestBuilder.subnetId(request.getSubnetId());
+            }
+            
+            // 가용 영역 설정
+            if (request.getAvailabilityZone() != null && !request.getAvailabilityZone().isBlank()) {
+                requestBuilder.placement(Placement.builder()
+                        .availabilityZone(request.getAvailabilityZone())
+                        .build());
+            }
+            
+            // 사용자 데이터 설정
+            if (request.getUserData() != null && !request.getUserData().isBlank()) {
+                requestBuilder.userData(java.util.Base64.getEncoder().encodeToString(request.getUserData().getBytes()));
+            }
+            
+            // Name 태그 추가
+            TagSpecification tagSpec = TagSpecification.builder()
+                    .resourceType(ResourceType.INSTANCE)
+                    .tags(software.amazon.awssdk.services.ec2.model.Tag.builder()
+                            .key("Name")
+                            .value(request.getName())
+                            .build())
+                    .build();
+            requestBuilder.tagSpecifications(tagSpec);
+            
+            RunInstancesResponse response = ec2Client.runInstances(requestBuilder.build());
+            
+            if (response.instances().isEmpty()) {
+                throw new RuntimeException("인스턴스 생성에 실패했습니다.");
+            }
+            
+            Instance createdInstance = response.instances().get(0);
+            log.info("Successfully created EC2 instance: {}", createdInstance.instanceId());
+            
+            return convertToResponse(createdInstance);
+            
+        } catch (Ec2Exception e) {
+            log.error("Failed to create EC2 instance: {}", e.awsErrorDetails().errorMessage());
+            throw new RuntimeException("EC2 인스턴스 생성 실패: " + e.awsErrorDetails().errorMessage());
+        } catch (Exception e) {
+            log.error("Unexpected error while creating EC2 instance", e);
+            throw new RuntimeException("EC2 인스턴스 생성 중 오류 발생: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * EC2 인스턴스 정지
+     * 
+     * @param accountId AWS 계정 ID
+     * @param instanceId 인스턴스 ID
+     * @param region 리전 (null이면 계정의 기본 리전)
+     * @return 정지된 인스턴스 정보
+     */
+    public AwsEc2InstanceResponse stopInstance(Long accountId, String instanceId, String region) {
+        AwsAccount account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
+        
+        if (!Boolean.TRUE.equals(account.getActive())) {
+            throw new IllegalStateException("비활성화된 계정입니다.");
+        }
+        
+        String targetRegion = region != null ? region : account.getDefaultRegion();
+        if (targetRegion == null) {
+            targetRegion = "us-east-1";
+        }
+        
+        log.info("Stopping EC2 instance {} for account {} in region {}", instanceId, accountId, targetRegion);
+        
+        try (Ec2Client ec2Client = createEc2Client(account, targetRegion)) {
+            // 먼저 현재 인스턴스 상태 확인
+            DescribeInstancesRequest describeRequest = DescribeInstancesRequest.builder()
+                    .instanceIds(instanceId)
+                    .build();
+            
+            DescribeInstancesResponse describeResponse = ec2Client.describeInstances(describeRequest);
+            
+            if (describeResponse.reservations().isEmpty() || 
+                describeResponse.reservations().get(0).instances().isEmpty()) {
+                throw new ResponseStatusException(NOT_FOUND, "EC2 인스턴스를 찾을 수 없습니다.");
+            }
+            
+            Instance currentInstance = describeResponse.reservations().get(0).instances().get(0);
+            InstanceState currentState = currentInstance.state();
+            
+            // 이미 정지된 상태이거나 정지 중인 경우
+            if (currentState.name() == InstanceStateName.STOPPED || 
+                currentState.name() == InstanceStateName.STOPPING) {
+                log.info("Instance {} is already stopped or stopping. Current state: {}", 
+                        instanceId, currentState.name());
+                return convertToResponse(currentInstance);
+            }
+            
+            // 실행 중이 아닌 경우 오류
+            if (currentState.name() != InstanceStateName.RUNNING) {
+                throw new IllegalStateException(
+                    "인스턴스가 실행 중이 아닙니다. 현재 상태: " + currentState.nameAsString());
+            }
+            
+            // 정지 요청
+            StopInstancesRequest request = StopInstancesRequest.builder()
+                    .instanceIds(instanceId)
+                    .build();
+            
+            StopInstancesResponse response = ec2Client.stopInstances(request);
+            
+            if (response.stoppingInstances().isEmpty()) {
+                throw new RuntimeException("인스턴스 정지에 실패했습니다.");
+            }
+            
+            InstanceStateChange stateChange = response.stoppingInstances().get(0);
+            log.info("Successfully initiated stop for EC2 instance: {}, previous state: {}, current state: {}", 
+                    instanceId, stateChange.previousState().name(), stateChange.currentState().name());
+            
+            // 정지 요청이 성공했으므로 현재 상태 반환 (정지 중 상태)
+            return convertToResponse(currentInstance);
+            
+        } catch (Ec2Exception e) {
+            log.error("Failed to stop EC2 instance {}: {}", instanceId, e.awsErrorDetails().errorMessage());
+            throw new RuntimeException("EC2 인스턴스 정지 실패: " + e.awsErrorDetails().errorMessage());
+        } catch (ResponseStatusException e) {
+            throw e;
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Unexpected error while stopping EC2 instance {}", instanceId, e);
+            throw new RuntimeException("EC2 인스턴스 정지 중 오류 발생: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * EC2 인스턴스 시작
+     * 
+     * @param accountId AWS 계정 ID
+     * @param instanceId 인스턴스 ID
+     * @param region 리전 (null이면 계정의 기본 리전)
+     * @return 시작된 인스턴스 정보
+     */
+    public AwsEc2InstanceResponse startInstance(Long accountId, String instanceId, String region) {
+        AwsAccount account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
+        
+        if (!Boolean.TRUE.equals(account.getActive())) {
+            throw new IllegalStateException("비활성화된 계정입니다.");
+        }
+        
+        String targetRegion = region != null ? region : account.getDefaultRegion();
+        if (targetRegion == null) {
+            targetRegion = "us-east-1";
+        }
+        
+        log.info("Starting EC2 instance {} for account {} in region {}", instanceId, accountId, targetRegion);
+        
+        try (Ec2Client ec2Client = createEc2Client(account, targetRegion)) {
+            // 먼저 현재 인스턴스 상태 확인
+            DescribeInstancesRequest describeRequest = DescribeInstancesRequest.builder()
+                    .instanceIds(instanceId)
+                    .build();
+            
+            DescribeInstancesResponse describeResponse = ec2Client.describeInstances(describeRequest);
+            
+            if (describeResponse.reservations().isEmpty() || 
+                describeResponse.reservations().get(0).instances().isEmpty()) {
+                throw new ResponseStatusException(NOT_FOUND, "EC2 인스턴스를 찾을 수 없습니다.");
+            }
+            
+            Instance currentInstance = describeResponse.reservations().get(0).instances().get(0);
+            InstanceState currentState = currentInstance.state();
+            
+            // 이미 실행 중이거나 시작 중인 경우
+            if (currentState.name() == InstanceStateName.RUNNING || 
+                currentState.name() == InstanceStateName.PENDING) {
+                log.info("Instance {} is already running or starting. Current state: {}", 
+                        instanceId, currentState.name());
+                return convertToResponse(currentInstance);
+            }
+            
+            // 정지된 상태가 아닌 경우 오류
+            if (currentState.name() != InstanceStateName.STOPPED) {
+                throw new IllegalStateException(
+                    "인스턴스가 정지된 상태가 아닙니다. 현재 상태: " + currentState.nameAsString());
+            }
+            
+            // 시작 요청
+            StartInstancesRequest request = StartInstancesRequest.builder()
+                    .instanceIds(instanceId)
+                    .build();
+            
+            StartInstancesResponse response = ec2Client.startInstances(request);
+            
+            if (response.startingInstances().isEmpty()) {
+                throw new RuntimeException("인스턴스 시작에 실패했습니다.");
+            }
+            
+            InstanceStateChange stateChange = response.startingInstances().get(0);
+            log.info("Successfully initiated start for EC2 instance: {}, previous state: {}, current state: {}", 
+                    instanceId, stateChange.previousState().name(), stateChange.currentState().name());
+            
+            // 시작 요청이 성공했으므로 현재 상태 반환 (시작 중 상태)
+            return convertToResponse(currentInstance);
+            
+        } catch (Ec2Exception e) {
+            log.error("Failed to start EC2 instance {}: {}", instanceId, e.awsErrorDetails().errorMessage());
+            throw new RuntimeException("EC2 인스턴스 시작 실패: " + e.awsErrorDetails().errorMessage());
+        } catch (ResponseStatusException e) {
+            throw e;
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Unexpected error while starting EC2 instance {}", instanceId, e);
+            throw new RuntimeException("EC2 인스턴스 시작 중 오류 발생: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * EC2 인스턴스 삭제 (종료)
+     * 
+     * @param accountId AWS 계정 ID
+     * @param instanceId 인스턴스 ID
+     * @param region 리전 (null이면 계정의 기본 리전)
+     */
+    public void terminateInstance(Long accountId, String instanceId, String region) {
+        AwsAccount account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
+        
+        if (!Boolean.TRUE.equals(account.getActive())) {
+            throw new IllegalStateException("비활성화된 계정입니다.");
+        }
+        
+        String targetRegion = region != null ? region : account.getDefaultRegion();
+        if (targetRegion == null) {
+            targetRegion = "us-east-1";
+        }
+        
+        log.info("Terminating EC2 instance {} for account {} in region {}", instanceId, accountId, targetRegion);
+        
+        try (Ec2Client ec2Client = createEc2Client(account, targetRegion)) {
+            TerminateInstancesRequest request = TerminateInstancesRequest.builder()
+                    .instanceIds(instanceId)
+                    .build();
+            
+            TerminateInstancesResponse response = ec2Client.terminateInstances(request);
+            
+            if (response.terminatingInstances().isEmpty()) {
+                throw new RuntimeException("인스턴스 삭제에 실패했습니다.");
+            }
+            
+            InstanceStateChange stateChange = response.terminatingInstances().get(0);
+            log.info("Successfully terminated EC2 instance: {}, previous state: {}, current state: {}", 
+                    instanceId, stateChange.previousState().name(), stateChange.currentState().name());
+            
+        } catch (Ec2Exception e) {
+            log.error("Failed to terminate EC2 instance {}: {}", instanceId, e.awsErrorDetails().errorMessage());
+            throw new RuntimeException("EC2 인스턴스 삭제 실패: " + e.awsErrorDetails().errorMessage());
+        } catch (Exception e) {
+            log.error("Unexpected error while terminating EC2 instance {}", instanceId, e);
+            throw new RuntimeException("EC2 인스턴스 삭제 중 오류 발생: " + e.getMessage());
+        }
+    }
+    
+    /**
      * EC2 Instance를 Response DTO로 변환
      */
     private AwsEc2InstanceResponse convertToResponse(Instance instance) {
         // Name 태그 찾기
         String name = instance.tags().stream()
                 .filter(tag -> "Name".equals(tag.key()))
-                .map(Tag::value)
+                .map(software.amazon.awssdk.services.ec2.model.Tag::value)
                 .findFirst()
                 .orElse("");
         
