@@ -72,7 +72,7 @@ tasks.named('bootRun') {
 		def dotenvFile = file('.env')
 		if (dotenvFile.exists()) {
 			// 로드할 환경변수 목록 (Spring 설정과 충돌하지 않는 것만)
-			def allowedKeys = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'JWT_SECRET', 'APP_CRED_KEY']
+			def allowedKeys = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'JWT_SECRET', 'APP_CRED_KEY', 'FRONTEND_URL']
 
 			dotenvFile.readLines().each { line ->
 				if (line && !line.startsWith('#') && line.contains('=')) {

@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/aws/accounts")
 @RequiredArgsConstructor
@@ -18,7 +20,13 @@ public class AwsAccountController {
     // STS GetCallerIdentity로 검증 후 저장
     @PostMapping
     public ResponseEntity<?> register(@Valid @RequestBody AwsAccountCreateRequest req) {
-        AwsAccount saved = service.createWithVerify(req);
+        // SecurityContext에서 로그인한 사용자의 memberId 추출
+        Long memberId = (Long) org.springframework.security.core.context.SecurityContextHolder
+                .getContext()
+                .getAuthentication()
+                .getPrincipal();
+
+        AwsAccount saved = service.createWithVerify(req, memberId);
         // secret은 응답에서 제외: 최소 정보만 반환
         return ResponseEntity.ok(new Object() {
             public final Long id = saved.getId();
@@ -30,10 +38,17 @@ public class AwsAccountController {
         });
     }
 
-    // 활성 계정 목록
+    // 활성 계정 목록 (로그인한 사용자의 workspace 기준)
     @GetMapping
     public ResponseEntity<?> getActiveAccounts() {
-        return ResponseEntity.ok(service.getActiveAccounts().stream()
+        // SecurityContext에서 로그인한 사용자의 memberId 추출
+        Long memberId = (Long) org.springframework.security.core.context.SecurityContextHolder
+                .getContext()
+                .getAuthentication()
+                .getPrincipal();
+
+        List<AwsAccount> accounts = service.getActiveAccountsByMember(memberId);
+        return ResponseEntity.ok(accounts.stream()
                 .map(this::toResp)
                 .toList());
     }

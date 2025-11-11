@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface AwsAccountRepository extends JpaRepository<AwsAccount, Long> {
     Optional<AwsAccount> findByAccessKeyId(String accessKeyId);
     List<AwsAccount> findByActiveTrue();
+    List<AwsAccount> findByWorkspaceIdAndActiveTrue(Long workspaceId);
 }

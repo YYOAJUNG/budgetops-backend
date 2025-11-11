@@ -26,6 +26,9 @@ public class AwsAccountCreateRequest {
     @Size(min = 32, max = 128)
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String secretAccessKey;
+
+    // Workspace ID
+    private Long workspaceId;
 }
 
 

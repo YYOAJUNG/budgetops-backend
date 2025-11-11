@@ -1,6 +1,7 @@
 package com.budgetops.backend.aws.entity;
 
 import com.budgetops.backend.aws.support.CryptoStringConverter;
+import com.budgetops.backend.billing.entity.Workspace;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -15,6 +16,10 @@ public class AwsAccount {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "workspace_id")
+    private Workspace workspace;
 
     private String name;
     private String defaultRegion;

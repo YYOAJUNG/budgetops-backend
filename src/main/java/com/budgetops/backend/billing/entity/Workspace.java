@@ -1,5 +1,6 @@
 package com.budgetops.backend.billing.entity;
 
+import com.budgetops.backend.aws.entity.AwsAccount;
 import com.budgetops.backend.domain.user.entity.Member;
 import jakarta.persistence.*;
 import lombok.*;
@@ -41,6 +42,10 @@ public class Workspace {
     )
     @Builder.Default
     private List<Member> members = new ArrayList<>();
+
+    @OneToMany(mappedBy = "workspace", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<AwsAccount> awsAccounts = new ArrayList<>();
 
     // Payment와 Billing은 Member(사용자) 단위로 관리됩니다.
     // Workspace가 아닌 Member와 OneToOne 관계를 맺습니다.
