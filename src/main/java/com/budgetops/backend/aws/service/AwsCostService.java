@@ -152,22 +152,35 @@ public class AwsCostService {
      */
     public List<AccountCost> getAllAccountsCosts(String startDate, String endDate) {
         List<AwsAccount> activeAccounts = accountRepository.findByActiveTrue();
+        log.info("Fetching costs for {} active account(s) from {} to {}", 
+                activeAccounts.size(), startDate, endDate);
+        
+        if (activeAccounts.isEmpty()) {
+            log.warn("No active AWS accounts found for cost retrieval");
+            return new ArrayList<>();
+        }
+        
         List<AccountCost> accountCosts = new ArrayList<>();
         
         for (AwsAccount account : activeAccounts) {
             try {
+                log.debug("Fetching costs for account {} ({})", account.getId(), account.getName());
                 List<DailyCost> dailyCosts = getCosts(account.getId(), startDate, endDate);
                 double totalCost = dailyCosts.stream()
                         .mapToDouble(DailyCost::totalCost)
                         .sum();
                 
                 accountCosts.add(new AccountCost(account.getId(), account.getName(), totalCost));
+                log.debug("Successfully fetched costs for account {}: {}", account.getId(), totalCost);
             } catch (Exception e) {
-                log.error("Failed to fetch costs for account {}: {}", account.getId(), e.getMessage());
+                log.error("Failed to fetch costs for account {} ({}): {}", 
+                        account.getId(), account.getName(), e.getMessage(), e);
                 // 계정별로 실패해도 다른 계정은 계속 조회
             }
         }
         
+        log.info("Successfully fetched costs for {}/{} account(s)", 
+                accountCosts.size(), activeAccounts.size());
         return accountCosts;
     }
     
