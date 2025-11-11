@@ -26,6 +26,7 @@ public class RecommendationService {
     private final SimulationService simulationService;
     private final AwsAccountRepository awsAccountRepository;
     private final AwsEc2Service awsEc2Service;
+    private final UcasRuleLoader ucasRuleLoader;
     
     /**
      * Top 3 추천 액션 생성
@@ -109,16 +110,33 @@ public class RecommendationService {
                 .limit(3)
                 .collect(Collectors.toList());
         
-        // 4. RecommendationResponse로 변환
+        // 4. RecommendationResponse로 변환 (UCAS 룰 기반 근거 포함)
         List<RecommendationResponse> recommendations = new ArrayList<>();
         for (SimulationResult result : topResults) {
             ActionType actionType = determineActionType(result.getScenarioName());
+            
+            // UCAS 룰 기반 상세 근거 생성
+            String basisDescription = generateBasisWithRule(actionType, result);
+            
+            // 시나리오 결과에 룰 기반 설명 추가
+            SimulationResult enhancedResult = SimulationResult.builder()
+                    .scenarioName(result.getScenarioName())
+                    .newCost(result.getNewCost())
+                    .currentCost(result.getCurrentCost())
+                    .savings(result.getSavings())
+                    .riskScore(result.getRiskScore())
+                    .priorityScore(result.getPriorityScore())
+                    .confidence(result.getConfidence())
+                    .yamlPatch(result.getYamlPatch())
+                    .description(basisDescription) // 룰 기반 상세 설명으로 교체
+                    .build();
+            
             recommendations.add(RecommendationResponse.builder()
                     .title(generateTitle(actionType, result.getSavings()))
-                    .description(result.getDescription())
+                    .description(result.getDescription()) // 기본 설명 유지
                     .estimatedSavings(result.getSavings())
                     .actionType(actionType.getCode())
-                    .scenario(result)
+                    .scenario(enhancedResult) // 룰 기반 설명이 포함된 시나리오
                     .build());
         }
         
@@ -183,6 +201,45 @@ public class RecommendationService {
             case STORAGE -> String.format("90일 미접근 스토리지 아카이빙으로 %.0f원 절감", savings);
             default -> "비용 최적화 추천";
         };
+    }
+    
+    /**
+     * UCAS 룰 기반 상세 근거 생성
+     */
+    private String generateBasisWithRule(ActionType actionType, SimulationResult result) {
+        // 액션 타입에 맞는 파라미터 추출
+        Map<String, Object> params = extractParamsFromResult(actionType, result);
+        
+        // UCAS 룰 로더를 통해 근거 생성
+        return ucasRuleLoader.generateBasisDescription(actionType.getCode(), result.getSavings(), params);
+    }
+    
+    /**
+     * 시나리오 결과에서 파라미터 추출
+     */
+    private Map<String, Object> extractParamsFromResult(ActionType actionType, SimulationResult result) {
+        Map<String, Object> params = new HashMap<>();
+        
+        switch (actionType) {
+            case OFFHOURS:
+                params.put("stop", Map.of(
+                    "weekdays", List.of("Mon-Fri"),
+                    "stop_at", "20:00",
+                    "start_at", "08:30",
+                    "timezone", "Asia/Seoul"
+                ));
+                break;
+            case COMMITMENT:
+                params.put("commit_level", 0.7);
+                params.put("commit_years", 1);
+                break;
+            case STORAGE:
+                params.put("target_tier", "Cold");
+                params.put("retention_days", 90);
+                break;
+        }
+        
+        return params;
     }
 }
 
