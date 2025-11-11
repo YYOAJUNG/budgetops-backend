@@ -133,10 +133,22 @@ public class RecommendationService {
                     .description(basisDescription) // 룰 기반 상세 설명으로 교체
                     .build();
             
+            // 절감액이 음수인 경우 0으로 처리
+            double safeSavings = Math.max(0.0, result.getSavings());
+            
+            // description에서 음수 절감액 제거
+            String safeDescription = result.getDescription();
+            if (safeDescription != null) {
+                // "-1원", "-123원" 같은 패턴을 "0원"으로 변경
+                safeDescription = safeDescription.replaceAll("월 약 -\\d+원", "월 약 0원");
+                safeDescription = safeDescription.replaceAll("약 -\\d+원", "약 0원");
+                safeDescription = safeDescription.replaceAll("-\\d+원 절감", "0원 절감");
+            }
+            
             recommendations.add(RecommendationResponse.builder()
-                    .title(generateTitle(actionType, result.getSavings()))
-                    .description(result.getDescription()) // 기본 설명 유지
-                    .estimatedSavings(result.getSavings())
+                    .title(generateTitle(actionType, safeSavings))
+                    .description(safeDescription) // 안전한 설명 사용
+                    .estimatedSavings(safeSavings)
                     .actionType(actionType.getCode())
                     .scenario(enhancedResult) // 룰 기반 설명이 포함된 시나리오
                     .build());
@@ -197,23 +209,97 @@ public class RecommendationService {
      * 액션 타입별 제목 생성
      */
     private String generateTitle(ActionType actionType, Double savings) {
+        // 절감액이 음수이면 0으로 처리
+        double safeSavings = Math.max(0.0, savings != null ? savings : 0.0);
         return switch (actionType) {
-            case OFFHOURS -> String.format("Off-hours로 월 최대 %.0f원 절감 예상", savings);
-            case COMMITMENT -> String.format("커밋 70%%로 전환 시 %.0f원 절감", savings);
-            case STORAGE -> String.format("90일 미접근 스토리지 아카이빙으로 %.0f원 절감", savings);
+            case OFFHOURS -> String.format("Off-hours로 월 최대 %.0f원 절감 예상", safeSavings);
+            case COMMITMENT -> String.format("커밋 70%%로 전환 시 %.0f원 절감", safeSavings);
+            case STORAGE -> String.format("90일 미접근 스토리지 아카이빙으로 %.0f원 절감", safeSavings);
             default -> "비용 최적화 추천";
         };
     }
     
     /**
-     * UCAS 룰 기반 상세 근거 생성
+     * UCAS 룰 기반 상세 근거 생성 (리소스 정보 포함)
      */
     private String generateBasisWithRule(ActionType actionType, SimulationResult result) {
         // 액션 타입에 맞는 파라미터 추출
         Map<String, Object> params = extractParamsFromResult(actionType, result);
         
+        // 시나리오 이름에서 resourceId 추출
+        String resourceId = extractResourceIdFromScenarioName(result.getScenarioName());
+        
+        // 리소스 정보 조회 (서비스명, CSP 등)
+        String resourceInfo = getResourceInfoForBasis(resourceId);
+        
         // UCAS 룰 로더를 통해 근거 생성
-        return ucasRuleLoader.generateBasisDescription(actionType.getCode(), result.getSavings(), params);
+        String basis = ucasRuleLoader.generateBasisDescription(actionType.getCode(), result.getSavings(), params);
+        
+        // 리소스 정보를 앞에 추가
+        if (!resourceInfo.isEmpty()) {
+            return resourceInfo + "\n\n" + basis;
+        }
+        return basis;
+    }
+    
+    /**
+     * 시나리오 이름에서 resourceId 추출
+     */
+    private String extractResourceIdFromScenarioName(String scenarioName) {
+        if (scenarioName == null) {
+            return "";
+        }
+        // "Off-hours 스케줄링: i-12345" -> "i-12345"
+        // "Commitment 최적화 (70%): i-12345" -> "i-12345"
+        int lastColonIndex = scenarioName.lastIndexOf(":");
+        if (lastColonIndex >= 0 && lastColonIndex < scenarioName.length() - 1) {
+            return scenarioName.substring(lastColonIndex + 1).trim();
+        }
+        return "";
+    }
+    
+    /**
+     * 근거 설명을 위한 리소스 정보 조회
+     */
+    private String getResourceInfoForBasis(String resourceId) {
+        if (resourceId == null || resourceId.isEmpty()) {
+            return "";
+        }
+        
+        try {
+            // 활성 AWS 계정에서 리소스 찾기
+            List<AwsAccount> activeAccounts = awsAccountRepository.findAll().stream()
+                    .filter(account -> Boolean.TRUE.equals(account.getActive()))
+                    .collect(Collectors.toList());
+            
+            for (AwsAccount account : activeAccounts) {
+                try {
+                    String region = account.getDefaultRegion() != null ? account.getDefaultRegion() : "us-east-1";
+                    List<AwsEc2InstanceResponse> instances = awsEc2Service.listInstances(account.getId(), region);
+                    
+                    // resourceId와 일치하는 인스턴스 찾기
+                    for (AwsEc2InstanceResponse instance : instances) {
+                        if (resourceId.equals(instance.getInstanceId())) {
+                            // 리소스 정보 반환
+                            String serviceName = "EC2";
+                            String instanceType = instance.getInstanceType() != null ? instance.getInstanceType() : "N/A";
+                            String instanceName = instance.getName() != null ? instance.getName() : resourceId;
+                            
+                            return String.format("• 적용 리소스: %s (%s)\n• 서비스: %s\n• 인스턴스 타입: %s\n• 리전: %s",
+                                    instanceName, resourceId, serviceName, instanceType, region);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debug("Failed to fetch instances for account {}: {}", account.getId(), e.getMessage());
+                }
+            }
+            
+            // 리소스를 찾지 못한 경우 기본 정보만 반환
+            return String.format("• 적용 리소스: %s\n• 서비스: EC2", resourceId);
+        } catch (Exception e) {
+            log.warn("Failed to get resource info for basis: {}", e.getMessage());
+            return String.format("• 적용 리소스: %s\n• 서비스: EC2", resourceId);
+        }
     }
     
     /**
