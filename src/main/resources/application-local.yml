@@ -29,8 +29,8 @@ app:
 
 iamport:
   api:
-    key: test_key
-    secret: test_secret
+    key: ${IAMPORT_API_KEY}
+    secret: ${IAMPORT_API_SECRET}
 
 springdoc:
   api-docs:

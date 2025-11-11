@@ -29,6 +29,9 @@ public class Payment {
     @Column(name = "imp_uid")
     private String impUid;  // Iamport 거래 고유 번호
 
+    @Column(name = "customer_uid")
+    private String customerUid;  // 빌링키 (정기결제용)
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
