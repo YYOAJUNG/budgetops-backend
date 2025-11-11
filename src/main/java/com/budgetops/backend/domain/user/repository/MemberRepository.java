@@ -1,6 +1,6 @@
-package com.budgetops.backend.billing.repository;
+package com.budgetops.backend.domain.user.repository;
 
-import com.budgetops.backend.billing.entity.Member;
+import com.budgetops.backend.domain.user.entity.Member;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

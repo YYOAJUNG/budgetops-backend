@@ -1,6 +1,6 @@
 package com.budgetops.backend.billing.service;
 
-import com.budgetops.backend.billing.entity.Member;
+import com.budgetops.backend.domain.user.entity.Member;
 import com.budgetops.backend.billing.entity.Payment;
 import com.budgetops.backend.billing.enums.PaymentStatus;
 import com.budgetops.backend.billing.exception.PaymentVerificationException;

@@ -1,7 +1,7 @@
 package com.budgetops.backend.billing.service;
 
 import com.budgetops.backend.billing.entity.Billing;
-import com.budgetops.backend.billing.entity.Member;
+import com.budgetops.backend.domain.user.entity.Member;
 import com.budgetops.backend.billing.enums.BillingPlan;
 import com.budgetops.backend.billing.exception.BillingNotFoundException;
 import com.budgetops.backend.billing.exception.InvalidBillingPlanException;
