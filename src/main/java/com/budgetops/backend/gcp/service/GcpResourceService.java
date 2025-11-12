@@ -102,7 +102,13 @@ public class GcpResourceService {
     }
 
     private GcpResource convertResourceSearchResultToResource(ResourceSearchResult result, GcpAccount account, Instant now) {
-        String resourceId = result.getName();
+        // additionalAttributes에서 id 추출 (GCP 리소스의 실제 ID)
+        String resourceId = extractResourceIdFromAdditionalAttributes(result);
+        // id가 없으면 name을 fallback으로 사용
+        if (resourceId == null || resourceId.isEmpty()) {
+            resourceId = result.getName();
+        }
+        
         String resourceType = result.getAssetType();
         String resourceName = extractResourceName(result);
         String region = extractRegion(result);
@@ -120,6 +126,24 @@ public class GcpResourceService {
                 .lastUpdated(now)
                 .gcpAccount(account)
                 .build();
+    }
+    
+    private String extractResourceIdFromAdditionalAttributes(ResourceSearchResult result) {
+        try {
+            Struct additionalAttributes = result.getAdditionalAttributes();
+            if (additionalAttributes != null) {
+                Map<String, Value> fields = additionalAttributes.getFieldsMap();
+                if (fields.containsKey("id")) {
+                    Value idValue = fields.get("id");
+                    if (idValue.hasStringValue()) {
+                        return idValue.getStringValue();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // additionalAttributes 접근 실패 시 무시
+        }
+        return null;
     }
 
     private String extractResourceName(ResourceSearchResult result) {
@@ -243,6 +267,8 @@ public class GcpResourceService {
 
     private GcpResourceResponse convertToResponse(GcpResource resource) {
         GcpResourceResponse response = new GcpResourceResponse();
+        response.setId(resource.getId()); // 우리 서비스 내부 ID
+        response.setResourceId(resource.getResourceId()); // GCP API의 additionalAttributes.id
         response.setResourceName(resource.getResourceName());
         response.setResourceType(resource.getResourceType());
         response.setResourceTypeShort(extractResourceTypeShort(resource.getResourceType()));
