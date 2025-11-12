@@ -1,0 +1,50 @@
+name: GCP Compute Engine 최적화
+csp: GCP
+service: Compute Engine
+rules:
+  - id: instance_rightsizing
+    title: 인스턴스 크기 최적화
+    description: 사용률이 낮은 인스턴스는 더 작은 머신 타입으로 다운사이징하여 비용을 절감할 수 있습니다.
+    conditions:
+      - metric: cpu_utilization
+        threshold: 40
+        period: 7d
+      - metric: memory_utilization
+        threshold: 40
+        period: 7d
+    recommendation: "CPU 및 메모리 사용률이 7일간 평균 40% 미만인 인스턴스는 한 단계 작은 머신 타입으로 변경을 고려하세요."
+    cost_saving: "월 약 30-50% 비용 절감 가능"
+    
+  - id: committed_use_discounts
+    title: Committed Use Discounts 활용
+    description: 장기간 실행되는 인스턴스는 Committed Use Discounts를 활용합니다.
+    conditions:
+      - metric: uptime
+        threshold: 365d
+    recommendation: "1년 이상 지속적으로 실행되는 인스턴스는 1년 또는 3년 약정을 통해 최대 70% 할인을 받으세요."
+    cost_saving: "월 약 50-70% 비용 절감 가능"
+    
+  - id: preemptible_instances
+    title: Preemptible Instances 활용
+    description: 중단 가능한 워크로드는 Preemptible Instances를 사용합니다.
+    conditions:
+      - metric: workload_type
+        value: "batch, development, testing"
+      - metric: interruption_tolerance
+        value: "high"
+    recommendation: "중단 가능한 배치 작업이나 개발/테스트 환경은 Preemptible Instances를 활용하여 최대 80% 할인을 받으세요."
+    cost_saving: "월 약 60-80% 비용 절감 가능"
+    
+  - id: stop_unused_instances
+    title: 미사용 인스턴스 중지
+    description: 장기간 실행 중이지만 실제로 사용되지 않는 인스턴스를 식별하여 중지합니다.
+    conditions:
+      - metric: cpu_utilization
+        threshold: 5
+        period: 14d
+      - metric: network_in
+        threshold: 1MB
+        period: 14d
+    recommendation: "14일간 CPU 사용률이 5% 미만이고 네트워크 트래픽이 거의 없는 인스턴스는 중지하거나 삭제를 고려하세요."
+    cost_saving: "월 100% 비용 절감 (중지 시)"
+

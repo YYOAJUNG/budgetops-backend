@@ -1,6 +1,8 @@
 spring:
+  main:
+    allow-bean-definition-overriding: true
   datasource:
-    url: jdbc:h2:mem:budgetops;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    url: jdbc:h2:file:./data/budgetops;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     driver-class-name: org.h2.Driver
     username: sa
     password:
@@ -19,5 +21,20 @@ server:
 
 app:
   crypto:
-    key: ${APP_CRED_KEY:}
+    key: ${APP_CRED_KEY:default-dev-key-32-characters!}
+  aws:
+    validate: false
+  oauth2:
+    redirect-uri: ${FRONTEND_URL}/oauth/callback
+
+iamport:
+  api:
+    key: ${IAMPORT_API_KEY}
+    secret: ${IAMPORT_API_SECRET}
+
+springdoc:
+  api-docs:
+    enabled: true
+  packages-to-scan: com.budgetops.backend
+  paths-to-match: /api/**
 
