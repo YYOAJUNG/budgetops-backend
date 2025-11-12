@@ -86,7 +86,16 @@ public class AzureApiClient {
         String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId + "/providers/Microsoft.Compute/virtualMachines";
         Map<String, String> params = new HashMap<>();
         params.put("api-version", "2023-09-01");
-        params.put("$expand", "instanceView");
+        return get(url, accessToken, params);
+    }
+
+    public JsonNode getVirtualMachineInstanceView(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName
+                + "/instanceView";
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-09-01");
         return get(url, accessToken, params);
     }
 

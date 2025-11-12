@@ -51,30 +51,47 @@ public class AzureComputeService {
         String normalizedFilter = locationFilter != null ? locationFilter.toLowerCase(Locale.ROOT) : null;
 
         for (JsonNode vmNode : value) {
-            String location = vmNode.path("location").asText("");
-            if (normalizedFilter != null && !location.toLowerCase(Locale.ROOT).equals(normalizedFilter)) {
-                continue;
+            try {
+                String location = vmNode.path("location").asText("");
+                if (normalizedFilter != null && !location.toLowerCase(Locale.ROOT).equals(normalizedFilter)) {
+                    continue;
+                }
+
+                JsonNode properties = vmNode.path("properties");
+                if (properties.isMissingNode()) {
+                    log.warn("VM properties missing for VM: {}", vmNode.path("id").asText(""));
+                    continue;
+                }
+
+                String vmId = vmNode.path("id").asText("");
+                String vmName = vmNode.path("name").asText("");
+
+                JsonNode instanceView = fetchInstanceView(
+                        account.getSubscriptionId(),
+                        vmId,
+                        vmName,
+                        token.getAccessToken()
+                );
+
+                AzureVirtualMachineResponse vm = AzureVirtualMachineResponse.builder()
+                        .id(vmId)
+                        .name(vmName)
+                        .resourceGroup(extractResourceGroup(vmId))
+                        .location(location)
+                        .vmSize(extractVmSize(properties))
+                        .provisioningState(properties.path("provisioningState").asText(""))
+                        .powerState(extractPowerState(instanceView))
+                        .osType(extractOsType(properties))
+                        .computerName(extractComputerName(properties))
+                        .privateIp(extractPrivateIp(properties))
+                        .publicIp(extractPublicIp(properties))
+                        .build();
+
+                result.add(vm);
+            } catch (Exception e) {
+                log.error("Failed to parse VM node: {}", vmNode.path("id").asText(""), e);
+                // 개별 VM 파싱 실패 시에도 계속 진행
             }
-
-            JsonNode properties = vmNode.path("properties");
-            String vmId = vmNode.path("id").asText("");
-            String vmName = vmNode.path("name").asText("");
-
-            AzureVirtualMachineResponse vm = AzureVirtualMachineResponse.builder()
-                    .id(vmId)
-                    .name(vmName)
-                    .resourceGroup(extractResourceGroup(vmId))
-                    .location(location)
-                    .vmSize(properties.path("hardwareProfile").path("vmSize").asText(""))
-                    .provisioningState(properties.path("provisioningState").asText(""))
-                    .powerState(extractPowerState(properties))
-                    .osType(properties.path("storageProfile").path("osDisk").path("osType").asText(""))
-                    .computerName(properties.path("osProfile").path("computerName").asText(""))
-                    .privateIp(extractPrivateIp(properties))
-                    .publicIp(extractPublicIp(properties))
-                    .build();
-
-            result.add(vm);
         }
 
         return result;
@@ -93,8 +110,12 @@ public class AzureComputeService {
         return "";
     }
 
-    private String extractPowerState(JsonNode properties) {
-        JsonNode statuses = properties.path("instanceView").path("statuses");
+    private String extractPowerState(JsonNode instanceView) {
+        if (instanceView == null || instanceView.isMissingNode()) {
+            return "";
+        }
+        
+        JsonNode statuses = instanceView.path("statuses");
         if (!statuses.isArray()) {
             return "";
         }
@@ -105,6 +126,52 @@ public class AzureComputeService {
             }
         }
         return "";
+    }
+
+    private JsonNode fetchInstanceView(String subscriptionId, String vmId, String vmName, String accessToken) {
+        if (vmId == null || vmId.isBlank() || vmName == null || vmName.isBlank()) {
+            return null;
+        }
+        String resourceGroup = extractResourceGroup(vmId);
+        if (resourceGroup.isBlank()) {
+            log.warn("Failed to determine resourceGroup for VM: {}", vmId);
+            return null;
+        }
+
+        try {
+            return apiClient.getVirtualMachineInstanceView(subscriptionId, resourceGroup, vmName, accessToken);
+        } catch (Exception e) {
+            log.warn("Failed to fetch instance view for VM {}: {}", vmId, e.getMessage());
+            return null;
+        }
+    }
+
+    private String extractVmSize(JsonNode properties) {
+        JsonNode hardwareProfile = properties.path("hardwareProfile");
+        if (hardwareProfile.isMissingNode()) {
+            return "";
+        }
+        return hardwareProfile.path("vmSize").asText("");
+    }
+
+    private String extractOsType(JsonNode properties) {
+        JsonNode storageProfile = properties.path("storageProfile");
+        if (storageProfile.isMissingNode()) {
+            return "";
+        }
+        JsonNode osDisk = storageProfile.path("osDisk");
+        if (osDisk.isMissingNode()) {
+            return "";
+        }
+        return osDisk.path("osType").asText("");
+    }
+
+    private String extractComputerName(JsonNode properties) {
+        JsonNode osProfile = properties.path("osProfile");
+        if (osProfile.isMissingNode()) {
+            return "";
+        }
+        return osProfile.path("computerName").asText("");
     }
 
     private String extractPrivateIp(JsonNode properties) {
