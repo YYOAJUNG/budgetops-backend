@@ -64,6 +64,7 @@ class AzureComputeServiceTest {
                       "id": "/subscriptions/sub-1/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm1",
                       "name": "vm1",
                       "location": "korea-central",
+                      "zones": ["1"],
                       "properties": {
                         "hardwareProfile": {"vmSize": "Standard_B2s"},
                         "provisioningState": "Succeeded",
@@ -77,7 +78,18 @@ class AzureComputeServiceTest {
                         },
                         "osProfile": {
                           "computerName": "vm1"
-                        }
+                        },
+                        "networkProfile": {
+                          "networkInterfaces": [
+                            {
+                              "id": "/subscriptions/sub-1/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/nic1",
+                              "properties": {
+                                "primary": true
+                              }
+                            }
+                          ]
+                        },
+                        "timeCreated": "2025-11-10T10:00:00Z"
                       }
                     },
                     {
@@ -91,12 +103,50 @@ class AzureComputeServiceTest {
                 """);
 
         when(apiClient.listVirtualMachines(eq("sub-1"), anyString())).thenReturn(response);
+        when(apiClient.getVirtualMachineInstanceView(eq("sub-1"), eq("rg"), eq("vm1"), anyString()))
+                .thenReturn(OBJECT_MAPPER.readTree("""
+                        {
+                          "statuses": [
+                            {"code": "PowerState/running"}
+                          ]
+                        }
+                        """));
+        when(apiClient.getNetworkInterface(eq("sub-1"), eq("rg"), eq("nic1"), anyString()))
+                .thenReturn(OBJECT_MAPPER.readTree("""
+                        {
+                          "properties": {
+                            "ipConfigurations": [
+                              {
+                                "properties": {
+                                  "privateIPAddress": "10.0.0.4",
+                                  "primary": true,
+                                  "publicIPAddress": {
+                                    "id": "/subscriptions/sub-1/resourceGroups/rg/providers/Microsoft.Network/publicIPAddresses/pip1"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                        """));
+        when(apiClient.getPublicIpAddress(eq("sub-1"), eq("rg"), eq("pip1"), anyString()))
+                .thenReturn(OBJECT_MAPPER.readTree("""
+                        {
+                          "properties": {
+                            "ipAddress": "52.10.10.10"
+                          }
+                        }
+                        """));
 
         var result = service.listVirtualMachines(1L, "korea-central");
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getName()).isEqualTo("vm1");
         assertThat(result.get(0).getPowerState()).isEqualTo("running");
+        assertThat(result.get(0).getPrivateIp()).isEqualTo("10.0.0.4");
+        assertThat(result.get(0).getPublicIp()).isEqualTo("52.10.10.10");
+        assertThat(result.get(0).getAvailabilityZone()).isEqualTo("1");
+        assertThat(result.get(0).getTimeCreated()).isEqualTo("2025-11-10T10:00:00Z");
     }
 
     @Test

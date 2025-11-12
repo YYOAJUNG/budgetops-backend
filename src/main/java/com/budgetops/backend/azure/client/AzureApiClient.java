@@ -99,6 +99,24 @@ public class AzureApiClient {
         return get(url, accessToken, params);
     }
 
+    public JsonNode getNetworkInterface(String subscriptionId, String resourceGroup, String nicName, String accessToken) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Network/networkInterfaces/" + nicName;
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-04-01");
+        return get(url, accessToken, params);
+    }
+
+    public JsonNode getPublicIpAddress(String subscriptionId, String resourceGroup, String publicIpName, String accessToken) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Network/publicIPAddresses/" + publicIpName;
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-04-01");
+        return get(url, accessToken, params);
+    }
+
     public JsonNode queryCosts(String subscriptionId, String accessToken, String fromDate, String toDate, String granularity) {
         String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId + "/providers/Microsoft.CostManagement/query";
         Map<String, Object> body = new HashMap<>();

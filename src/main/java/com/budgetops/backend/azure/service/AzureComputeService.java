@@ -72,6 +72,11 @@ public class AzureComputeService {
                         vmName,
                         token.getAccessToken()
                 );
+                NetworkInfo networkInfo = fetchNetworkInfo(
+                        account.getSubscriptionId(),
+                        vmNode,
+                        token.getAccessToken()
+                );
 
                 AzureVirtualMachineResponse vm = AzureVirtualMachineResponse.builder()
                         .id(vmId)
@@ -83,8 +88,10 @@ public class AzureComputeService {
                         .powerState(extractPowerState(instanceView))
                         .osType(extractOsType(properties))
                         .computerName(extractComputerName(properties))
-                        .privateIp(extractPrivateIp(properties))
-                        .publicIp(extractPublicIp(properties))
+                        .privateIp(networkInfo.privateIp())
+                        .publicIp(networkInfo.publicIp())
+                        .availabilityZone(extractAvailabilityZone(vmNode))
+                        .timeCreated(extractTimeCreated(properties))
                         .build();
 
                 result.add(vm);
@@ -174,19 +181,103 @@ public class AzureComputeService {
         return osProfile.path("computerName").asText("");
     }
 
-    private String extractPrivateIp(JsonNode properties) {
-        JsonNode networkProfile = properties.path("networkProfile").path("networkInterfaces");
-        if (!networkProfile.isArray() || networkProfile.isEmpty()) {
-            return "";
+    private String extractAvailabilityZone(JsonNode vmNode) {
+        JsonNode zones = vmNode.path("zones");
+        if (zones.isArray() && zones.size() > 0) {
+            return zones.get(0).asText("");
         }
-        // Azure VM instanceView에는 IP 정보가 노출되지 않으므로 빈 문자열 반환
-        // 향후 Network Interface API를 호출하여 보완 가능
+        JsonNode zone = vmNode.path("properties").path("availabilityZone");
+        if (!zone.isMissingNode()) {
+            return zone.asText("");
+        }
         return "";
     }
 
-    private String extractPublicIp(JsonNode properties) {
-        // 위 설명과 동일하게 Public IP는 별도 API 호출이 필요하다.
-        return "";
+    private String extractTimeCreated(JsonNode properties) {
+        return properties.path("timeCreated").asText("");
+    }
+
+    private NetworkInfo fetchNetworkInfo(String subscriptionId, JsonNode vmNode, String accessToken) {
+        JsonNode networkInterfaces = vmNode.path("properties").path("networkProfile").path("networkInterfaces");
+        if (!networkInterfaces.isArray() || networkInterfaces.isEmpty()) {
+            return NetworkInfo.empty();
+        }
+        JsonNode primaryNic = null;
+        for (JsonNode nic : networkInterfaces) {
+            if (nic.path("properties").path("primary").asBoolean(false)) {
+                primaryNic = nic;
+                break;
+            }
+        }
+        if (primaryNic == null) {
+            primaryNic = networkInterfaces.get(0);
+        }
+        String nicId = primaryNic.path("id").asText("");
+        if (nicId.isBlank()) {
+            return NetworkInfo.empty();
+        }
+        String resourceGroup = extractResourceGroup(nicId);
+        String nicName = extractResourceName(nicId);
+        if (resourceGroup.isBlank() || nicName.isBlank()) {
+            return NetworkInfo.empty();
+        }
+
+        try {
+            JsonNode nicNode = apiClient.getNetworkInterface(subscriptionId, resourceGroup, nicName, accessToken);
+            JsonNode ipConfigs = nicNode.path("properties").path("ipConfigurations");
+            if (!ipConfigs.isArray() || ipConfigs.isEmpty()) {
+                return NetworkInfo.empty();
+            }
+            JsonNode primaryConfig = null;
+            for (JsonNode cfg : ipConfigs) {
+                if (cfg.path("properties").path("primary").asBoolean(false)) {
+                    primaryConfig = cfg;
+                    break;
+                }
+            }
+            if (primaryConfig == null) {
+                primaryConfig = ipConfigs.get(0);
+            }
+
+            String privateIp = primaryConfig.path("properties").path("privateIPAddress").asText("");
+            String publicIp = "";
+
+            JsonNode publicIpRef = primaryConfig.path("properties").path("publicIPAddress");
+            if (!publicIpRef.isMissingNode()) {
+                String publicIpId = publicIpRef.path("id").asText("");
+                if (!publicIpId.isBlank()) {
+                    String publicIpRg = extractResourceGroup(publicIpId);
+                    String publicIpName = extractResourceName(publicIpId);
+                    if (!publicIpName.isBlank()) {
+                        try {
+                            JsonNode publicIpNode = apiClient.getPublicIpAddress(subscriptionId, publicIpRg, publicIpName, accessToken);
+                            publicIp = publicIpNode.path("properties").path("ipAddress").asText("");
+                        } catch (Exception e) {
+                            log.warn("Failed to fetch public IP {}: {}", publicIpName, e.getMessage());
+                        }
+                    }
+                }
+            }
+
+            return new NetworkInfo(privateIp, publicIp);
+        } catch (Exception e) {
+            log.warn("Failed to fetch network interface for VM {}: {}", vmNode.path("id").asText(""), e.getMessage());
+            return NetworkInfo.empty();
+        }
+    }
+
+    private String extractResourceName(String resourceId) {
+        if (resourceId == null || resourceId.isBlank()) {
+            return "";
+        }
+        String[] parts = resourceId.split("/");
+        return parts.length > 0 ? parts[parts.length - 1] : "";
+    }
+
+    private record NetworkInfo(String privateIp, String publicIp) {
+        static NetworkInfo empty() {
+            return new NetworkInfo("", "");
+        }
     }
 }
 
