@@ -1,19 +1,31 @@
 package com.budgetops.backend.azure.service;
 
+import com.budgetops.backend.azure.client.AzureApiClient;
+import com.budgetops.backend.azure.dto.AzureAccessToken;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class AzureCredentialValidator {
 
+    private final AzureApiClient apiClient;
+
     /**
-     * 실제 구현 시 Azure AD 토큰 발급 및 ARM 간단 호출로 자격 증명을 검증한다.
-     * 현재는 스켈레톤 단계라 항상 true를 반환한다.
+     * Azure AD Client Credential 흐름으로 토큰을 발급 받은 뒤
+     * 구독 조회 API를 호출하여 자격 증명이 유효한지 확인한다.
      */
     public boolean isValid(String tenantId, String clientId, String clientSecret, String subscriptionId) {
-        log.debug("Skipping Azure credential validation (stub) for clientId={}, subscriptionId={}", clientId, subscriptionId);
-        return true;
+        try {
+            AzureAccessToken token = apiClient.fetchToken(tenantId, clientId, clientSecret);
+            apiClient.getSubscription(subscriptionId, token.getAccessToken());
+            return true;
+        } catch (Exception e) {
+            log.warn("Azure credential validation failed for clientId={}, subscriptionId={}: {}", clientId, subscriptionId, e.getMessage());
+            return false;
+        }
     }
 }
 
