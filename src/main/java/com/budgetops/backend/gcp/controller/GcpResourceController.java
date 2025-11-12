@@ -1,6 +1,7 @@
 package com.budgetops.backend.gcp.controller;
 
 import com.budgetops.backend.gcp.dto.GcpResourceListResponse;
+import com.budgetops.backend.gcp.dto.GcpResourceMetricsResponse;
 import com.budgetops.backend.gcp.service.GcpResourceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +26,15 @@ public class GcpResourceController {
     public ResponseEntity<List<GcpResourceListResponse>> listAllAccountsResources() {
         List<GcpResourceListResponse> responses = service.listAllAccountsResources();
         return ResponseEntity.ok(responses);
+    }
+
+    @GetMapping("/resources/{resourceId}/metrics")
+    public ResponseEntity<GcpResourceMetricsResponse> getResourceMetrics(
+            @PathVariable String resourceId,
+            @RequestParam(value = "hours", required = false, defaultValue = "1") Integer hours
+    ) {
+        GcpResourceMetricsResponse metrics = service.getResourceMetrics(resourceId, hours);
+        return ResponseEntity.ok(metrics);
     }
 }
 
