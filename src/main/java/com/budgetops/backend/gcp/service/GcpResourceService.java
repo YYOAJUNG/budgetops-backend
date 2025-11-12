@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -82,6 +83,7 @@ public class GcpResourceService {
                 existingResource.setRegion(resource.getRegion());
                 existingResource.setStatus(resource.getStatus());
                 existingResource.setDescription(resource.getDescription());
+                existingResource.setAdditionalAttributes(resource.getAdditionalAttributes());
                 existingResource.setLastUpdated(now);
                 savedResources.add(resourceRepository.save(existingResource));
             } else {
@@ -96,18 +98,53 @@ public class GcpResourceService {
 
         GcpResourceListResponse response = new GcpResourceListResponse();
         response.setAccountId(accountId);
+        response.setAccountName(account.getName());
         response.setProjectId(account.getProjectId());
         response.setResources(responseList);
         return response;
     }
 
+    @Transactional
+    public List<GcpResourceListResponse> listAllAccountsResources() {
+        List<GcpAccount> accounts = accountRepository.findAll();
+        List<GcpResourceListResponse> responses = new ArrayList<>();
+        
+        for (GcpAccount account : accounts) {
+            try {
+                // 각 계정에 대해 GCP API를 호출하여 리소스 조회
+                GcpResourceListResponse response = listResources(account.getId());
+                responses.add(response);
+            } catch (Exception e) {
+                // 특정 계정의 리소스 조회 실패 시에도 다른 계정은 계속 조회
+                // 빈 리소스 목록으로 응답 추가
+                GcpResourceListResponse response = new GcpResourceListResponse();
+                response.setAccountId(account.getId());
+                response.setAccountName(account.getName());
+                response.setProjectId(account.getProjectId());
+                response.setResources(new ArrayList<>());
+                responses.add(response);
+            }
+        }
+        
+        return responses;
+    }
+
     private GcpResource convertResourceSearchResultToResource(ResourceSearchResult result, GcpAccount account, Instant now) {
-        String resourceId = result.getName();
+        // additionalAttributes에서 id 추출 (GCP 리소스의 실제 ID)
+        String resourceId = extractResourceIdFromAdditionalAttributes(result);
+        // id가 없으면 name을 fallback으로 사용
+        if (resourceId == null || resourceId.isEmpty()) {
+            resourceId = result.getName();
+        }
+        
         String resourceType = result.getAssetType();
         String resourceName = extractResourceName(result);
         String region = extractRegion(result);
         String status = extractStatus(result);
         String description = null;
+        
+        // 리소스 타입별 추가 정보 추출
+        Map<String, Object> additionalAttributes = extractAdditionalAttributes(result, resourceType);
 
         return GcpResource.builder()
                 .resourceId(resourceId)
@@ -118,8 +155,87 @@ public class GcpResourceService {
                 .description(description)
                 .monthlyCost(null) // 나중에 별도 API로 채워질 예정
                 .lastUpdated(now)
+                .additionalAttributes(additionalAttributes)
                 .gcpAccount(account)
                 .build();
+    }
+    
+    private Map<String, Object> extractAdditionalAttributes(ResourceSearchResult result, String resourceType) {
+        Map<String, Object> attributes = new HashMap<>();
+        
+        try {
+            Struct additionalAttributes = result.getAdditionalAttributes();
+            if (additionalAttributes == null) {
+                return attributes;
+            }
+            
+            Map<String, Value> fields = additionalAttributes.getFieldsMap();
+            
+            // Compute Instance의 경우 특정 필드 추출
+            if ("compute.googleapis.com/Instance".equals(resourceType)) {
+                // machineType 추출
+                if (fields.containsKey("machineType")) {
+                    Value machineTypeValue = fields.get("machineType");
+                    if (machineTypeValue.hasStringValue()) {
+                        attributes.put("machineType", machineTypeValue.getStringValue());
+                    }
+                }
+                
+                // externalIPs 추출
+                if (fields.containsKey("externalIPs")) {
+                    Value externalIPsValue = fields.get("externalIPs");
+                    if (externalIPsValue.hasListValue()) {
+                        List<Object> externalIPs = new ArrayList<>();
+                        for (Value ipValue : externalIPsValue.getListValue().getValuesList()) {
+                            if (ipValue.hasStringValue()) {
+                                externalIPs.add(ipValue.getStringValue());
+                            }
+                        }
+                        attributes.put("externalIPs", externalIPs);
+                    }
+                }
+                
+                // internalIPs 추출
+                if (fields.containsKey("internalIPs")) {
+                    Value internalIPsValue = fields.get("internalIPs");
+                    if (internalIPsValue.hasListValue()) {
+                        List<Object> internalIPs = new ArrayList<>();
+                        for (Value ipValue : internalIPsValue.getListValue().getValuesList()) {
+                            if (ipValue.hasStringValue()) {
+                                internalIPs.add(ipValue.getStringValue());
+                            }
+                        }
+                        attributes.put("internalIPs", internalIPs);
+                    }
+                }
+            }
+            
+            // 다른 리소스 타입이 추가될 경우 여기에 추가
+            // 예: if ("storage.googleapis.com/Bucket".equals(resourceType)) { ... }
+            
+        } catch (Exception e) {
+            // additionalAttributes 접근 실패 시 빈 Map 반환
+        }
+        
+        return attributes;
+    }
+    
+    private String extractResourceIdFromAdditionalAttributes(ResourceSearchResult result) {
+        try {
+            Struct additionalAttributes = result.getAdditionalAttributes();
+            if (additionalAttributes != null) {
+                Map<String, Value> fields = additionalAttributes.getFieldsMap();
+                if (fields.containsKey("id")) {
+                    Value idValue = fields.get("id");
+                    if (idValue.hasStringValue()) {
+                        return idValue.getStringValue();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // additionalAttributes 접근 실패 시 무시
+        }
+        return null;
     }
 
     private String extractResourceName(ResourceSearchResult result) {
@@ -243,6 +359,8 @@ public class GcpResourceService {
 
     private GcpResourceResponse convertToResponse(GcpResource resource) {
         GcpResourceResponse response = new GcpResourceResponse();
+        response.setId(resource.getId()); // 우리 서비스 내부 ID
+        response.setResourceId(resource.getResourceId()); // GCP API의 additionalAttributes.id
         response.setResourceName(resource.getResourceName());
         response.setResourceType(resource.getResourceType());
         response.setResourceTypeShort(extractResourceTypeShort(resource.getResourceType()));
@@ -250,6 +368,7 @@ public class GcpResourceService {
         response.setRegion(resource.getRegion());
         response.setStatus(resource.getStatus());
         response.setLastUpdated(resource.getLastUpdated());
+        response.setAdditionalAttributes(resource.getAdditionalAttributes());
         return response;
     }
 

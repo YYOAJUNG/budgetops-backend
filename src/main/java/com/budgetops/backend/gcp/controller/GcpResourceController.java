@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/gcp")
 @RequiredArgsConstructor
@@ -17,6 +19,12 @@ public class GcpResourceController {
     public ResponseEntity<GcpResourceListResponse> listResources(@PathVariable Long accountId) {
         GcpResourceListResponse response = service.listResources(accountId);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/resources")
+    public ResponseEntity<List<GcpResourceListResponse>> listAllAccountsResources() {
+        List<GcpResourceListResponse> responses = service.listAllAccountsResources();
+        return ResponseEntity.ok(responses);
     }
 }
 
