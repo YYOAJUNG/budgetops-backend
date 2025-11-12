@@ -96,6 +96,7 @@ public class GcpResourceService {
 
         GcpResourceListResponse response = new GcpResourceListResponse();
         response.setAccountId(accountId);
+        response.setAccountName(account.getName());
         response.setProjectId(account.getProjectId());
         response.setResources(responseList);
         return response;
