@@ -17,5 +17,7 @@ public class AzureVirtualMachineResponse {
     String computerName;
     String privateIp;
     String publicIp;
+    String availabilityZone;
+    String timeCreated;
 }
 
