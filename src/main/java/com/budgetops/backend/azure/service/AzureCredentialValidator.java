@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class AzureCredentialValidator {
 
+    private final AzureTokenManager tokenManager;
     private final AzureApiClient apiClient;
 
     /**
@@ -19,11 +20,12 @@ public class AzureCredentialValidator {
      */
     public boolean isValid(String tenantId, String clientId, String clientSecret, String subscriptionId) {
         try {
-            AzureAccessToken token = apiClient.fetchToken(tenantId, clientId, clientSecret);
+            AzureAccessToken token = tokenManager.getToken(tenantId, clientId, clientSecret);
             apiClient.getSubscription(subscriptionId, token.getAccessToken());
             return true;
         } catch (Exception e) {
             log.warn("Azure credential validation failed for clientId={}, subscriptionId={}: {}", clientId, subscriptionId, e.getMessage());
+            tokenManager.invalidate(tenantId, clientId, clientSecret);
             return false;
         }
     }

@@ -14,7 +14,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 
 @Slf4j
 @Service
@@ -23,6 +22,7 @@ public class AzureComputeService {
 
     private final AzureAccountRepository accountRepository;
     private final AzureApiClient apiClient;
+    private final AzureTokenManager tokenManager;
 
     @Transactional(readOnly = true)
     public List<AzureVirtualMachineResponse> listVirtualMachines(Long accountId, String locationFilter) {
@@ -33,8 +33,14 @@ public class AzureComputeService {
             throw new IllegalStateException("비활성화된 Azure 계정입니다.");
         }
 
-        AzureAccessToken token = apiClient.fetchToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
-        JsonNode response = apiClient.listVirtualMachines(account.getSubscriptionId(), token.getAccessToken());
+        AzureAccessToken token = tokenManager.getToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+        JsonNode response;
+        try {
+            response = apiClient.listVirtualMachines(account.getSubscriptionId(), token.getAccessToken());
+        } catch (Exception e) {
+            tokenManager.invalidate(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+            throw e;
+        }
         JsonNode value = response.path("value");
 
         List<AzureVirtualMachineResponse> result = new ArrayList<>();

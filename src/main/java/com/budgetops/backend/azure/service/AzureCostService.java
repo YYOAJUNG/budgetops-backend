@@ -27,13 +27,21 @@ public class AzureCostService {
 
     private final AzureAccountRepository accountRepository;
     private final AzureApiClient apiClient;
+    private final AzureTokenManager tokenManager;
+    private final AzureCostRateLimiter rateLimiter;
 
     @Transactional(readOnly = true)
     public List<DailyCost> getCosts(Long accountId, String startDate, String endDate) {
         AzureAccount account = getAccount(accountId);
-        AzureAccessToken token = apiClient.fetchToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
-        JsonNode node = apiClient.queryCosts(account.getSubscriptionId(), token.getAccessToken(), startDate, endDate, "Daily");
-        return parseDailyCosts(account, node);
+        AzureAccessToken token = tokenManager.getToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+        rateLimiter.awaitAllowance(account.getSubscriptionId());
+        try {
+            JsonNode node = apiClient.queryCosts(account.getSubscriptionId(), token.getAccessToken(), startDate, endDate, "Daily");
+            return parseDailyCosts(account, node);
+        } catch (Exception e) {
+            tokenManager.invalidate(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+            throw e;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -43,14 +51,21 @@ public class AzureCostService {
         LocalDate from = ym.atDay(1);
         LocalDate to = ym.atEndOfMonth();
 
-        AzureAccessToken token = apiClient.fetchToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
-        JsonNode node = apiClient.queryCosts(
-                account.getSubscriptionId(),
-                token.getAccessToken(),
-                from.format(ISO_DATE),
-                to.plusDays(1).format(ISO_DATE),
-                "None"
-        );
+        AzureAccessToken token = tokenManager.getToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+        rateLimiter.awaitAllowance(account.getSubscriptionId());
+        JsonNode node;
+        try {
+            node = apiClient.queryCosts(
+                    account.getSubscriptionId(),
+                    token.getAccessToken(),
+                    from.format(ISO_DATE),
+                    to.plusDays(1).format(ISO_DATE),
+                    "None"
+            );
+        } catch (Exception e) {
+            tokenManager.invalidate(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+            throw e;
+        }
 
         double amount = extractTotalCost(node);
         String currency = extractCurrency(node).orElse("USD");
@@ -67,7 +82,8 @@ public class AzureCostService {
         return accountRepository.findByActiveTrue().stream()
                 .map(account -> {
                     try {
-                        AzureAccessToken token = apiClient.fetchToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+                        AzureAccessToken token = tokenManager.getToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+                        rateLimiter.awaitAllowance(account.getSubscriptionId());
                         JsonNode node = apiClient.queryCosts(account.getSubscriptionId(), token.getAccessToken(), startDate, endDate, "None");
                         double amount = extractTotalCost(node);
                         String currency = extractCurrency(node).orElse("USD");
@@ -80,6 +96,7 @@ public class AzureCostService {
                                 .build();
                     } catch (Exception e) {
                         log.warn("비용 조회 실패 - Azure 계정 id={}: {}", account.getId(), e.getMessage());
+                        tokenManager.invalidate(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
                         return AccountCost.builder()
                                 .accountId(account.getId())
                                 .accountName(account.getName())
