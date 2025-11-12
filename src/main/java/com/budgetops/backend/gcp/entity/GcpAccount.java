@@ -27,6 +27,9 @@ public class GcpAccount {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(length = 128)
+    private String name; // 사용자가 입력한 계정 이름
+
     @Column(nullable = false, length = 320)
     private String serviceAccountId;
 

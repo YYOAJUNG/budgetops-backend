@@ -218,6 +218,7 @@ public class GcpAccountService {
             }
 
             GcpAccount entity = new GcpAccount();
+            entity.setName(request.getName());
             entity.setServiceAccountId(request.getServiceAccountId());
             entity.setProjectId(projectId);
             entity.setBillingAccountId(billingAccountId);
@@ -229,6 +230,7 @@ public class GcpAccountService {
 
             res.setOk(true);
             res.setId(saved.getId());
+            res.setName(saved.getName());
             res.setServiceAccountId(saved.getServiceAccountId());
             res.setProjectId(saved.getProjectId());
             res.setMessage("Integration saved");
@@ -260,6 +262,7 @@ public class GcpAccountService {
     private GcpAccountResponse toResponse(GcpAccount account) {
         GcpAccountResponse response = new GcpAccountResponse();
         response.setId(account.getId());
+        response.setName(account.getName());
         response.setProjectId(account.getProjectId());
         response.setCreatedAt(account.getCreatedAt());
 
