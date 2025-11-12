@@ -104,6 +104,31 @@ public class GcpResourceService {
         return response;
     }
 
+    @Transactional
+    public List<GcpResourceListResponse> listAllAccountsResources() {
+        List<GcpAccount> accounts = accountRepository.findAll();
+        List<GcpResourceListResponse> responses = new ArrayList<>();
+        
+        for (GcpAccount account : accounts) {
+            try {
+                // 각 계정에 대해 GCP API를 호출하여 리소스 조회
+                GcpResourceListResponse response = listResources(account.getId());
+                responses.add(response);
+            } catch (Exception e) {
+                // 특정 계정의 리소스 조회 실패 시에도 다른 계정은 계속 조회
+                // 빈 리소스 목록으로 응답 추가
+                GcpResourceListResponse response = new GcpResourceListResponse();
+                response.setAccountId(account.getId());
+                response.setAccountName(account.getName());
+                response.setProjectId(account.getProjectId());
+                response.setResources(new ArrayList<>());
+                responses.add(response);
+            }
+        }
+        
+        return responses;
+    }
+
     private GcpResource convertResourceSearchResultToResource(ResourceSearchResult result, GcpAccount account, Instant now) {
         // additionalAttributes에서 id 추출 (GCP 리소스의 실제 ID)
         String resourceId = extractResourceIdFromAdditionalAttributes(result);
