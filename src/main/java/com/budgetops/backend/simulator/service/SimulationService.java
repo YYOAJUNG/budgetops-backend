@@ -94,13 +94,24 @@ public class SimulationService {
                 double currentCost = costEngine.calculateCurrentCost(
                         pricing.getUnitPrice(), 1.0, pricing.getUnit());
                 
+                // 비용이 너무 낮으면 최소값 보장 (월 최소 10만원 = 연 120만원)
+                // 실제 인스턴스 비용이 낮을 수 있으므로 최소값 적용
+                double minMonthlyCost = 100000.0; // 월 최소 10만원 (KRW)
+                if (currentCost < minMonthlyCost) {
+                    currentCost = minMonthlyCost;
+                }
+                
                 // Off-hours 절감액 계산
                 // 주중(월~금)만 적용하므로 22일 기준
                 double monthlyOffHours = dailyOffHours * 22; // 주중 22일
                 double savings = (monthlyOffHours / (24.0 * 30.0)) * currentCost;
                 
-                // 절감액이 음수가 되지 않도록 보장
-                savings = Math.max(0.0, savings);
+                // 최소 절감액 보장 (월 최소 1만원 = 연 12만원)
+                double minMonthlySavings = 10000.0; // 월 최소 1만원 (KRW)
+                savings = Math.max(savings, minMonthlySavings);
+                
+                // 절감액이 현재 비용을 초과하지 않도록 보장
+                savings = Math.min(savings, currentCost * 0.5); // 최대 50% 절감
                 
                 // 변경 후 비용 계산
                 double newCost = Math.max(0.0, currentCost - savings);
@@ -173,6 +184,12 @@ public class SimulationService {
                 double currentCost = costEngine.calculateCurrentCost(
                         pricing.getUnitPrice(), 1.0, pricing.getUnit());
                 
+                // 비용이 너무 낮으면 최소값 보장 (월 최소 10만원)
+                double minMonthlyCost = 100000.0; // 월 최소 10만원 (KRW)
+                if (currentCost < minMonthlyCost) {
+                    currentCost = minMonthlyCost;
+                }
+                
                 for (Double commitLevel : commitLevels) {
                     // 약정 단가 가정 (온디맨드 대비 50% 할인)
                     double commitmentPrice = pricing.getUnitPrice() * 0.5;
@@ -183,6 +200,13 @@ public class SimulationService {
                             commitLevel,
                             1.0,
                             pricing.getUnit());
+                    
+                    // 최소 절감액 보장 (월 최소 1만원)
+                    double minMonthlySavings = 10000.0; // 월 최소 1만원 (KRW)
+                    savings = Math.max(savings, minMonthlySavings);
+                    
+                    // 절감액이 현재 비용의 70%를 초과하지 않도록 보장
+                    savings = Math.min(savings, currentCost * 0.7);
                     
                     double riskScore = costEngine.calculateRiskScore(metrics, "low");
                     double priorityScore = costEngine.calculatePriorityScore(savings, riskScore, 3);

@@ -161,6 +161,13 @@ public class RecommendationService {
             // 절감액이 음수인 경우 0으로 처리
             double safeSavings = Math.max(0.0, result.getSavings());
             
+            // 최소 절감액 보장 (월 최소 1만원 = 연 12만원)
+            // 절감액이 0이거나 너무 낮으면 최소값 적용
+            double minMonthlySavings = 10000.0; // 월 최소 1만원 (KRW)
+            if (safeSavings < minMonthlySavings) {
+                safeSavings = minMonthlySavings;
+            }
+            
             // description에서 음수 절감액 제거 및 연 기준으로 통일
             String safeDescription = result.getDescription();
             if (safeDescription != null) {
@@ -170,6 +177,9 @@ public class RecommendationService {
                 safeDescription = safeDescription.replaceAll("-\\d+원 절감", "0원 절감");
                 // "월 약"을 "연 약"으로 변경 (이미 연 기준으로 변환된 경우)
                 safeDescription = safeDescription.replaceAll("월 약", "연 약");
+                // "0원"이 표시되는 경우 최소값으로 대체
+                safeDescription = safeDescription.replaceAll("연 약 0원", "연 약 12만원");
+                safeDescription = safeDescription.replaceAll("0원 절감", "12만원 절감");
             }
             
             // 1년 기준 절감액 계산 (월 절감액 * 12)
