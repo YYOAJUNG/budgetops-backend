@@ -1,14 +1,18 @@
 package com.budgetops.backend.gcp.entity;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import jakarta.persistence.Convert;
 import com.budgetops.backend.aws.support.CryptoStringConverter;
+import com.budgetops.backend.billing.entity.Workspace;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.data.annotation.CreatedDate;
@@ -26,6 +30,9 @@ public class GcpAccount {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(length = 128)
+    private String name; // 사용자가 입력한 계정 이름
 
     @Column(nullable = false, length = 320)
     private String serviceAccountId;
@@ -48,6 +55,10 @@ public class GcpAccount {
     @Convert(converter = CryptoStringConverter.class)
     @Column(columnDefinition = "TEXT")
     private String encryptedServiceAccountKey;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "workspace_id")
+    private Workspace workspace;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)

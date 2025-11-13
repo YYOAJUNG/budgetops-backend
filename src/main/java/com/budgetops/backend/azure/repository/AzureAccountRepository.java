@@ -1,0 +1,17 @@
+package com.budgetops.backend.azure.repository;
+
+import com.budgetops.backend.azure.entity.AzureAccount;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface AzureAccountRepository extends JpaRepository<AzureAccount, Long> {
+    Optional<AzureAccount> findByClientIdAndSubscriptionId(String clientId, String subscriptionId);
+    List<AzureAccount> findByActiveTrue();
+    List<AzureAccount> findByWorkspaceIdAndActiveTrue(Long workspaceId);
+    List<AzureAccount> findByWorkspaceOwnerId(Long ownerId);
+    List<AzureAccount> findByWorkspaceOwnerIdAndActiveTrue(Long ownerId);
+    Optional<AzureAccount> findByIdAndWorkspaceOwnerId(Long id, Long ownerId);
+}
+

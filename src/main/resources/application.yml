@@ -40,3 +40,14 @@ app:
   oauth2:
     redirect-uri: ${FRONTEND_URL}/oauth/callback
 
+iamport:
+  api:
+    key: ${IAMPORT_API_KEY}
+    secret: ${IAMPORT_API_SECRET}
+
+gemini:
+  api:
+    key: ${GEMINI_API_KEY:}
+  model:
+    name: ${GEMINI_MODEL_NAME:gemini-2.5-flash}
+
