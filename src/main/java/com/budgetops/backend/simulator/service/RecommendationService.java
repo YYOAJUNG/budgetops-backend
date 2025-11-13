@@ -103,6 +103,31 @@ public class RecommendationService {
             log.warn("Failed to simulate commitment: {}", e.getMessage());
         }
         
+        // Rightsizing (다운사이징) 시뮬레이션
+        try {
+            SimulateRequest rightsizingRequest = SimulateRequest.builder()
+                    .resourceIds(resourceIds)
+                    .action(ActionType.RIGHTSIZING)
+                    .params(ScenarioParams.builder()
+                            .targetVcpu(null)  // 자동 계산
+                            .targetRam(null)   // 자동 계산
+                            .build())
+                    .build();
+            
+            SimulateResponse rightsizingResponse = simulationService.simulate(rightsizingRequest);
+            if (!rightsizingResponse.getScenarios().isEmpty()) {
+                // 최고 절감액 시나리오 선택
+                SimulationResult bestRightsizing = rightsizingResponse.getScenarios().stream()
+                        .max(Comparator.comparing(SimulationResult::getSavings))
+                        .orElse(null);
+                if (bestRightsizing != null && bestRightsizing.getSavings() > 0) {
+                    allResults.add(bestRightsizing);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to simulate rightsizing: {}", e.getMessage());
+        }
+        
         // Storage 시뮬레이션 (현재는 EC2 기반이므로 스킵하거나 기본값 사용)
         // TODO: 실제 스토리지 리소스 조회 후 시뮬레이션
         
@@ -195,11 +220,13 @@ public class RecommendationService {
      * 시나리오 이름에서 액션 타입 추출
      */
     private ActionType determineActionType(String scenarioName) {
-        if (scenarioName.contains("Off-hours")) {
+        if (scenarioName.contains("Off-hours") || scenarioName.contains("비업무 시간")) {
             return ActionType.OFFHOURS;
-        } else if (scenarioName.contains("Commitment")) {
+        } else if (scenarioName.contains("Commitment") || scenarioName.contains("약정")) {
             return ActionType.COMMITMENT;
-        } else if (scenarioName.contains("Storage")) {
+        } else if (scenarioName.contains("Rightsizing") || scenarioName.contains("다운사이징")) {
+            return ActionType.RIGHTSIZING;
+        } else if (scenarioName.contains("Storage") || scenarioName.contains("스토리지")) {
             return ActionType.STORAGE;
         }
         return ActionType.OFFHOURS; // 기본값
@@ -212,9 +239,10 @@ public class RecommendationService {
         // 절감액이 음수이면 0으로 처리
         double safeSavings = Math.max(0.0, savings != null ? savings : 0.0);
         return switch (actionType) {
-            case OFFHOURS -> String.format("Off-hours로 월 최대 %.0f원 절감 예상", safeSavings);
-            case COMMITMENT -> String.format("커밋 70%%로 전환 시 %.0f원 절감", safeSavings);
-            case STORAGE -> String.format("90일 미접근 스토리지 아카이빙으로 %.0f원 절감", safeSavings);
+            case OFFHOURS -> String.format("비업무 시간 자동 중지로 월 최대 %.0f원 절감", safeSavings);
+            case COMMITMENT -> String.format("장기 약정 할인으로 %.0f원 절감", safeSavings);
+            case RIGHTSIZING -> String.format("인스턴스 다운사이징으로 %.0f원 절감", safeSavings);
+            case STORAGE -> String.format("스토리지 아카이빙으로 %.0f원 절감", safeSavings);
             default -> "비용 최적화 추천";
         };
     }
@@ -320,6 +348,10 @@ public class RecommendationService {
             case COMMITMENT:
                 params.put("commit_level", 0.7);
                 params.put("commit_years", 1);
+                break;
+            case RIGHTSIZING:
+                params.put("target_vcpu", null); // 자동 계산
+                params.put("target_ram", null); // 자동 계산
                 break;
             case STORAGE:
                 params.put("target_tier", "Cold");
