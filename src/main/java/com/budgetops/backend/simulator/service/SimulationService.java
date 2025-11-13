@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -390,11 +391,49 @@ public class SimulationService {
     }
     
     /**
-     * 리소스 정보 조회
+     * 리소스 정보 조회 (실제 EC2 인스턴스 정보)
      */
     private ResourceInfo getResourceInfo(String resourceId) {
-        // TODO: 실제 리소스 정보 조회 (EC2, S3 등)
-        // 현재는 예시 데이터 반환
+        try {
+            // 활성 AWS 계정에서 인스턴스 찾기
+            List<AwsAccount> activeAccounts = awsAccountRepository.findAll().stream()
+                    .filter(account -> Boolean.TRUE.equals(account.getActive()))
+                    .collect(java.util.stream.Collectors.toList());
+            
+            for (AwsAccount account : activeAccounts) {
+                try {
+                    String region = account.getDefaultRegion() != null ? account.getDefaultRegion() : "us-east-1";
+                    List<AwsEc2InstanceResponse> instances = awsEc2Service.listInstances(account.getId(), region);
+                    
+                    for (AwsEc2InstanceResponse instance : instances) {
+                        if (resourceId.equals(instance.getInstanceId())) {
+                            // 태그 정보 수집
+                            Map<String, String> tags = new HashMap<>();
+                            if (instance.getName() != null && !instance.getName().isEmpty()) {
+                                tags.put("Name", instance.getName());
+                            }
+                            tags.put("env", "dev"); // 기본값
+                            
+                            return ResourceInfo.builder()
+                                    .id(resourceId)
+                                    .csp("AWS")
+                                    .service("EC2")
+                                    .region(region)
+                                    .project("default")
+                                    .tags(tags)
+                                    .instanceType(instance.getInstanceType()) // 인스턴스 타입 추가
+                                    .build();
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debug("Failed to fetch instances for account {}: {}", account.getId(), e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get resource info for {}: {}", resourceId, e.getMessage());
+        }
+        
+        // 기본값 반환
         return ResourceInfo.builder()
                 .id(resourceId)
                 .csp("AWS")
@@ -406,16 +445,72 @@ public class SimulationService {
     }
     
     /**
-     * 가격 정보 조회
+     * EC2 인스턴스 타입별 시간당 가격 (USD, ap-northeast-2 기준)
+     * 실제 AWS 가격을 반영 (2024년 기준)
+     */
+    private static final Map<String, Double> EC2_INSTANCE_PRICING = Map.ofEntries(
+            // t 시리즈
+            Map.entry("t2.micro", 0.0116),
+            Map.entry("t2.small", 0.023),
+            Map.entry("t2.medium", 0.0464),
+            Map.entry("t3.micro", 0.0104),
+            Map.entry("t3.small", 0.0208),
+            Map.entry("t3.medium", 0.0416),
+            Map.entry("t3.large", 0.0832),
+            Map.entry("t4g.micro", 0.0084),
+            Map.entry("t4g.small", 0.0168),
+            // m 시리즈
+            Map.entry("m5.large", 0.096),
+            Map.entry("m5.xlarge", 0.192),
+            Map.entry("m5.2xlarge", 0.384),
+            Map.entry("m6i.large", 0.108),
+            Map.entry("m6i.xlarge", 0.216),
+            Map.entry("m6i.2xlarge", 0.432),
+            Map.entry("m7i.large", 0.120),
+            Map.entry("m7i.xlarge", 0.240),
+            Map.entry("m7i.2xlarge", 0.480),
+            Map.entry("m7i-flex.large", 0.108),
+            Map.entry("m7i-flex.xlarge", 0.216),
+            Map.entry("m7i-flex.2xlarge", 0.432),
+            // c 시리즈
+            Map.entry("c5.large", 0.085),
+            Map.entry("c5.xlarge", 0.17),
+            Map.entry("c5.2xlarge", 0.34),
+            Map.entry("c6i.large", 0.085),
+            Map.entry("c6i.xlarge", 0.17),
+            Map.entry("c7i.large", 0.095),
+            Map.entry("c7i.xlarge", 0.19),
+            // r 시리즈
+            Map.entry("r5.large", 0.126),
+            Map.entry("r5.xlarge", 0.252),
+            Map.entry("r6i.large", 0.1512),
+            Map.entry("r6i.xlarge", 0.3024)
+    );
+    
+    /**
+     * 가격 정보 조회 (실제 EC2 인스턴스 타입 기반)
      */
     private PricingInfo getPricingInfo(ResourceInfo resource) {
-        // TODO: 실제 가격 정보 조회
-        // 현재는 예시 데이터 반환
+        String instanceType = resource.getInstanceType();
+        Double unitPrice = null;
+        
+        if (instanceType != null) {
+            // 인스턴스 타입별 실제 가격 조회
+            unitPrice = EC2_INSTANCE_PRICING.get(instanceType.toLowerCase());
+        }
+        
+        // 가격을 찾지 못한 경우 기본값 사용 (더 현실적인 가격)
+        if (unitPrice == null) {
+            // 인스턴스 타입이 없거나 매핑되지 않은 경우, 일반적인 중간 크기 인스턴스 가격 사용
+            unitPrice = 0.15; // 시간당 $0.15 (약 m5.large 수준)
+            log.debug("Instance type {} not found in pricing map, using default price {}", instanceType, unitPrice);
+        }
+        
         return PricingInfo.builder()
                 .unit("hour")
-                .unitPrice(0.1)  // 시간당 $0.1
+                .unitPrice(unitPrice)
                 .commitmentApplicable(true)
-                .commitmentPrice(0.05)
+                .commitmentPrice(unitPrice * 0.5) // 약정 시 50% 할인
                 .build();
     }
     
