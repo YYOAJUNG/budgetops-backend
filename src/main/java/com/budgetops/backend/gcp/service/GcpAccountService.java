@@ -4,6 +4,7 @@ import com.budgetops.backend.gcp.dto.*;
 import com.google.auth.oauth2.ServiceAccountCredentials;
 import com.budgetops.backend.gcp.entity.GcpAccount;
 import com.budgetops.backend.gcp.repository.GcpAccountRepository;
+import com.budgetops.backend.gcp.repository.GcpResourceRepository;
 import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.BigQueryOptions;
 import com.google.cloud.bigquery.Dataset;
@@ -30,13 +31,16 @@ public class GcpAccountService {
     private final GcpServiceAccountVerifier serviceAccountVerifier;
     private final GcpBillingAccountVerifier billingVerifier;
     private final GcpAccountRepository gcpAccountRepository;
+    private final GcpResourceRepository gcpResourceRepository;
 
     public GcpAccountService(GcpServiceAccountVerifier serviceAccountVerifier,
                              GcpBillingAccountVerifier billingVerifier,
-                             GcpAccountRepository gcpAccountRepository) {
+                             GcpAccountRepository gcpAccountRepository,
+                             GcpResourceRepository gcpResourceRepository) {
         this.serviceAccountVerifier = serviceAccountVerifier;
         this.billingVerifier = billingVerifier;
         this.gcpAccountRepository = gcpAccountRepository;
+        this.gcpResourceRepository = gcpResourceRepository;
     }
 
     public void setServiceAccountId(ServiceAccountIdRequest request) {
@@ -148,6 +152,13 @@ public class GcpAccountService {
     public void deleteAccount(Long id) {
         GcpAccount account = gcpAccountRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("GCP 계정을 찾을 수 없습니다."));
+        
+        // 계정에 연결된 모든 리소스를 먼저 삭제 (외래키 제약조건 해결)
+        gcpResourceRepository.findByGcpAccountId(id).forEach(resource -> {
+            gcpResourceRepository.delete(resource);
+        });
+        
+        // 리소스 삭제 후 계정 삭제
         gcpAccountRepository.delete(account);
     }
 
