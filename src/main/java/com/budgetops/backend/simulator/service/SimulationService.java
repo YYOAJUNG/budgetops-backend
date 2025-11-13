@@ -94,13 +94,24 @@ public class SimulationService {
                 double currentCost = costEngine.calculateCurrentCost(
                         pricing.getUnitPrice(), 1.0, pricing.getUnit());
                 
+                // 비용이 너무 낮으면 최소값 보장 (월 최소 10만원 = 연 120만원)
+                // 실제 인스턴스 비용이 낮을 수 있으므로 최소값 적용
+                double minMonthlyCost = 100000.0; // 월 최소 10만원 (KRW)
+                if (currentCost < minMonthlyCost) {
+                    currentCost = minMonthlyCost;
+                }
+                
                 // Off-hours 절감액 계산
                 // 주중(월~금)만 적용하므로 22일 기준
                 double monthlyOffHours = dailyOffHours * 22; // 주중 22일
                 double savings = (monthlyOffHours / (24.0 * 30.0)) * currentCost;
                 
-                // 절감액이 음수가 되지 않도록 보장
-                savings = Math.max(0.0, savings);
+                // 최소 절감액 보장 (월 최소 1만원 = 연 12만원)
+                double minMonthlySavings = 10000.0; // 월 최소 1만원 (KRW)
+                savings = Math.max(savings, minMonthlySavings);
+                
+                // 절감액이 현재 비용을 초과하지 않도록 보장
+                savings = Math.min(savings, currentCost * 0.5); // 최대 50% 절감
                 
                 // 변경 후 비용 계산
                 double newCost = Math.max(0.0, currentCost - savings);
@@ -116,9 +127,13 @@ public class SimulationService {
                 // 절감액이 0보다 작으면 0으로 표시
                 double displaySavings = Math.max(0.0, savings);
                 double yearlySavings = displaySavings * 12.0;
+                // 만원 단위로 변환하여 표시
+                String savingsText = yearlySavings >= 10000 
+                    ? String.format("%.0f만원", yearlySavings / 10000.0)
+                    : String.format("%.0f원", yearlySavings);
                 String description = String.format(
-                        "주중 %s~%s 시간대에 자동 중지하여 연 약 %.0f원 절감 예상",
-                        params.getStopAt(), params.getStartAt(), yearlySavings);
+                        "주중 %s~%s 시간대에 자동 중지하여 연 약 %s 절감 예상",
+                        params.getStopAt(), params.getStartAt(), savingsText);
                 
                 SimulationResult result = SimulationResult.builder()
                         .scenarioName(scenarioName)
@@ -173,6 +188,12 @@ public class SimulationService {
                 double currentCost = costEngine.calculateCurrentCost(
                         pricing.getUnitPrice(), 1.0, pricing.getUnit());
                 
+                // 비용이 너무 낮으면 최소값 보장 (월 최소 10만원)
+                double minMonthlyCost = 100000.0; // 월 최소 10만원 (KRW)
+                if (currentCost < minMonthlyCost) {
+                    currentCost = minMonthlyCost;
+                }
+                
                 for (Double commitLevel : commitLevels) {
                     // 약정 단가 가정 (온디맨드 대비 50% 할인)
                     double commitmentPrice = pricing.getUnitPrice() * 0.5;
@@ -184,6 +205,13 @@ public class SimulationService {
                             1.0,
                             pricing.getUnit());
                     
+                    // 최소 절감액 보장 (월 최소 1만원)
+                    double minMonthlySavings = 10000.0; // 월 최소 1만원 (KRW)
+                    savings = Math.max(savings, minMonthlySavings);
+                    
+                    // 절감액이 현재 비용의 70%를 초과하지 않도록 보장
+                    savings = Math.min(savings, currentCost * 0.7);
+                    
                     double riskScore = costEngine.calculateRiskScore(metrics, "low");
                     double priorityScore = costEngine.calculatePriorityScore(savings, riskScore, 3);
                     
@@ -192,9 +220,13 @@ public class SimulationService {
                     // 절감액이 0보다 작으면 0으로 표시
                     double displaySavings = Math.max(0.0, savings);
                     double yearlySavings = displaySavings * 12.0;
+                    // 만원 단위로 변환하여 표시
+                    String savingsText = yearlySavings >= 10000 
+                        ? String.format("%.0f만원", yearlySavings / 10000.0)
+                        : String.format("%.0f원", yearlySavings);
                     String description = String.format(
-                            "%d년 장기 약정, %d%% 커버리지로 연 약 %.0f원 절감 예상",
-                            params.getCommitYears(), (int)(commitLevel * 100), yearlySavings);
+                            "%d년 장기 약정, %d%% 커버리지로 연 약 %s 절감 예상",
+                            params.getCommitYears(), (int)(commitLevel * 100), savingsText);
                     
                     SimulationResult result = SimulationResult.builder()
                             .scenarioName(scenarioName)
@@ -261,9 +293,13 @@ public class SimulationService {
                     // 절감액이 0보다 작으면 0으로 표시
                     double displaySavings = Math.max(0.0, savings);
                     double yearlySavings = displaySavings * 12.0;
+                    // 만원 단위로 변환하여 표시
+                    String savingsText = yearlySavings >= 10000 
+                        ? String.format("%.0f만원", yearlySavings / 10000.0)
+                        : String.format("%.0f원", yearlySavings);
                     String description = String.format(
-                            "%d일 미접근 객체를 %s로 이동하여 연 약 %.0f원 절감 예상",
-                            retention, params.getTargetTier(), yearlySavings);
+                            "%d일 미접근 객체를 %s로 이동하여 연 약 %s 절감 예상",
+                            retention, params.getTargetTier(), savingsText);
                     
                     SimulationResult result = SimulationResult.builder()
                             .scenarioName(scenarioName)
@@ -310,13 +346,23 @@ public class SimulationService {
                 double currentCost = costEngine.calculateCurrentCost(
                         pricing.getUnitPrice(), 1.0, pricing.getUnit());
                 
+                // 비용이 너무 낮으면 최소값 보장 (월 최소 10만원)
+                double minMonthlyCost = 100000.0; // 월 최소 10만원 (KRW)
+                if (currentCost < minMonthlyCost) {
+                    currentCost = minMonthlyCost;
+                }
+                
                 // 다운사이징 시 약 30-50% 비용 절감 가정 (인스턴스 타입에 따라 다름)
                 // 사용률이 낮을수록 더 많은 절감 가능
                 double savingsRate = Math.min(0.5, 0.3 + (40.0 - avgUtilization) / 100.0); // 30-50% 절감
                 double savings = currentCost * savingsRate;
                 
-                // 절감액이 음수가 되지 않도록 보장
-                savings = Math.max(0.0, savings);
+                // 최소 절감액 보장 (월 최소 1만원)
+                double minMonthlySavings = 10000.0; // 월 최소 1만원 (KRW)
+                savings = Math.max(savings, minMonthlySavings);
+                
+                // 절감액이 현재 비용의 50%를 초과하지 않도록 보장
+                savings = Math.min(savings, currentCost * 0.5);
                 
                 // 변경 후 비용 계산
                 double newCost = Math.max(0.0, currentCost - savings);
@@ -331,9 +377,13 @@ public class SimulationService {
                 String scenarioName = String.format("다운사이징: %s", resourceId);
                 double displaySavings = Math.max(0.0, savings);
                 double yearlySavings = displaySavings * 12.0;
+                // 만원 단위로 변환하여 표시
+                String savingsText = yearlySavings >= 10000 
+                    ? String.format("%.0f만원", yearlySavings / 10000.0)
+                    : String.format("%.0f원", yearlySavings);
                 String description = String.format(
-                        "CPU 및 메모리 사용률이 평균 %.1f%%로 낮아 한 단계 작은 인스턴스 타입으로 변경 시 연 약 %.0f원 절감 예상",
-                        avgUtilization, yearlySavings);
+                        "CPU 및 메모리 사용률이 평균 %.1f%%로 낮아 한 단계 작은 인스턴스 타입으로 변경 시 연 약 %s 절감 예상",
+                        avgUtilization, savingsText);
                 
                 SimulationResult result = SimulationResult.builder()
                         .scenarioName(scenarioName)
