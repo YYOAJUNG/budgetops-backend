@@ -14,7 +14,7 @@ import java.io.IOException;
 @Component
 public class CustomLogoutSuccessHandler implements LogoutSuccessHandler {
 
-    @Value("${app.oauth2.logout-redirect-uri:http://localhost:3000}")
+    @Value("${app.oauth2.logout-redirect-uri:https://budgetops.work}")
     private String logoutRedirectUri;
 
     @Override
