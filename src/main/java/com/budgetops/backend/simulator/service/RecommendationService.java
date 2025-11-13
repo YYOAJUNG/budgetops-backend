@@ -177,9 +177,11 @@ public class RecommendationService {
                 safeDescription = safeDescription.replaceAll("-\\d+원 절감", "0원 절감");
                 // "월 약"을 "연 약"으로 변경 (이미 연 기준으로 변환된 경우)
                 safeDescription = safeDescription.replaceAll("월 약", "연 약");
-                // "0원"이 표시되는 경우 최소값으로 대체
+                // "0원"이 표시되는 경우 최소값으로 대체 (이미 만원 단위로 변환되어 있을 수 있음)
                 safeDescription = safeDescription.replaceAll("연 약 0원", "연 약 12만원");
                 safeDescription = safeDescription.replaceAll("0원 절감", "12만원 절감");
+                // 이상한 숫자 패턴 제거 (예: "4800012만원" -> "48만원")
+                safeDescription = safeDescription.replaceAll("(\\d{5,})만원", "12만원");
             }
             
             // 1년 기준 절감액 계산 (월 절감액 * 12)

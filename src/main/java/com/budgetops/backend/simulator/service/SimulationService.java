@@ -127,9 +127,13 @@ public class SimulationService {
                 // 절감액이 0보다 작으면 0으로 표시
                 double displaySavings = Math.max(0.0, savings);
                 double yearlySavings = displaySavings * 12.0;
+                // 만원 단위로 변환하여 표시
+                String savingsText = yearlySavings >= 10000 
+                    ? String.format("%.0f만원", yearlySavings / 10000.0)
+                    : String.format("%.0f원", yearlySavings);
                 String description = String.format(
-                        "주중 %s~%s 시간대에 자동 중지하여 연 약 %.0f원 절감 예상",
-                        params.getStopAt(), params.getStartAt(), yearlySavings);
+                        "주중 %s~%s 시간대에 자동 중지하여 연 약 %s 절감 예상",
+                        params.getStopAt(), params.getStartAt(), savingsText);
                 
                 SimulationResult result = SimulationResult.builder()
                         .scenarioName(scenarioName)
@@ -216,9 +220,13 @@ public class SimulationService {
                     // 절감액이 0보다 작으면 0으로 표시
                     double displaySavings = Math.max(0.0, savings);
                     double yearlySavings = displaySavings * 12.0;
+                    // 만원 단위로 변환하여 표시
+                    String savingsText = yearlySavings >= 10000 
+                        ? String.format("%.0f만원", yearlySavings / 10000.0)
+                        : String.format("%.0f원", yearlySavings);
                     String description = String.format(
-                            "%d년 장기 약정, %d%% 커버리지로 연 약 %.0f원 절감 예상",
-                            params.getCommitYears(), (int)(commitLevel * 100), yearlySavings);
+                            "%d년 장기 약정, %d%% 커버리지로 연 약 %s 절감 예상",
+                            params.getCommitYears(), (int)(commitLevel * 100), savingsText);
                     
                     SimulationResult result = SimulationResult.builder()
                             .scenarioName(scenarioName)
@@ -285,9 +293,13 @@ public class SimulationService {
                     // 절감액이 0보다 작으면 0으로 표시
                     double displaySavings = Math.max(0.0, savings);
                     double yearlySavings = displaySavings * 12.0;
+                    // 만원 단위로 변환하여 표시
+                    String savingsText = yearlySavings >= 10000 
+                        ? String.format("%.0f만원", yearlySavings / 10000.0)
+                        : String.format("%.0f원", yearlySavings);
                     String description = String.format(
-                            "%d일 미접근 객체를 %s로 이동하여 연 약 %.0f원 절감 예상",
-                            retention, params.getTargetTier(), yearlySavings);
+                            "%d일 미접근 객체를 %s로 이동하여 연 약 %s 절감 예상",
+                            retention, params.getTargetTier(), savingsText);
                     
                     SimulationResult result = SimulationResult.builder()
                             .scenarioName(scenarioName)
@@ -365,9 +377,13 @@ public class SimulationService {
                 String scenarioName = String.format("다운사이징: %s", resourceId);
                 double displaySavings = Math.max(0.0, savings);
                 double yearlySavings = displaySavings * 12.0;
+                // 만원 단위로 변환하여 표시
+                String savingsText = yearlySavings >= 10000 
+                    ? String.format("%.0f만원", yearlySavings / 10000.0)
+                    : String.format("%.0f원", yearlySavings);
                 String description = String.format(
-                        "CPU 및 메모리 사용률이 평균 %.1f%%로 낮아 한 단계 작은 인스턴스 타입으로 변경 시 연 약 %.0f원 절감 예상",
-                        avgUtilization, yearlySavings);
+                        "CPU 및 메모리 사용률이 평균 %.1f%%로 낮아 한 단계 작은 인스턴스 타입으로 변경 시 연 약 %s 절감 예상",
+                        avgUtilization, savingsText);
                 
                 SimulationResult result = SimulationResult.builder()
                         .scenarioName(scenarioName)
