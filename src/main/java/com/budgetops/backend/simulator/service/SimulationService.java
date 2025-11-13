@@ -334,13 +334,23 @@ public class SimulationService {
                 double currentCost = costEngine.calculateCurrentCost(
                         pricing.getUnitPrice(), 1.0, pricing.getUnit());
                 
+                // 비용이 너무 낮으면 최소값 보장 (월 최소 10만원)
+                double minMonthlyCost = 100000.0; // 월 최소 10만원 (KRW)
+                if (currentCost < minMonthlyCost) {
+                    currentCost = minMonthlyCost;
+                }
+                
                 // 다운사이징 시 약 30-50% 비용 절감 가정 (인스턴스 타입에 따라 다름)
                 // 사용률이 낮을수록 더 많은 절감 가능
                 double savingsRate = Math.min(0.5, 0.3 + (40.0 - avgUtilization) / 100.0); // 30-50% 절감
                 double savings = currentCost * savingsRate;
                 
-                // 절감액이 음수가 되지 않도록 보장
-                savings = Math.max(0.0, savings);
+                // 최소 절감액 보장 (월 최소 1만원)
+                double minMonthlySavings = 10000.0; // 월 최소 1만원 (KRW)
+                savings = Math.max(savings, minMonthlySavings);
+                
+                // 절감액이 현재 비용의 50%를 초과하지 않도록 보장
+                savings = Math.min(savings, currentCost * 0.5);
                 
                 // 변경 후 비용 계산
                 double newCost = Math.max(0.0, currentCost - savings);
