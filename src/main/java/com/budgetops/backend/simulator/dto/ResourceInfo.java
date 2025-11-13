@@ -16,5 +16,6 @@ public class ResourceInfo {
     String region;
     String project;  // 프로젝트/워크스페이스
     Map<String, String> tags;  // env, owner, etc.
+    String instanceType;  // EC2 인스턴스 타입 (예: m7i-flex.xlarge)
 }
 
