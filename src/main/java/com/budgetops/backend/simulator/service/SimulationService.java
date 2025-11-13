@@ -114,9 +114,10 @@ public class SimulationService {
                 String scenarioName = String.format("비업무 시간 자동 중지: %s", resourceId);
                 // 절감액이 0보다 작으면 0으로 표시
                 double displaySavings = Math.max(0.0, savings);
+                double yearlySavings = displaySavings * 12.0;
                 String description = String.format(
-                        "주중 %s~%s 시간대에 자동 중지하여 월 약 %.0f원 절감 예상",
-                        params.getStopAt(), params.getStartAt(), displaySavings);
+                        "주중 %s~%s 시간대에 자동 중지하여 연 약 %.0f원 절감 예상",
+                        params.getStopAt(), params.getStartAt(), yearlySavings);
                 
                 SimulationResult result = SimulationResult.builder()
                         .scenarioName(scenarioName)
@@ -189,9 +190,10 @@ public class SimulationService {
                             (int)(commitLevel * 100), resourceId);
                     // 절감액이 0보다 작으면 0으로 표시
                     double displaySavings = Math.max(0.0, savings);
+                    double yearlySavings = displaySavings * 12.0;
                     String description = String.format(
-                            "%d년 장기 약정, %d%% 커버리지로 월 약 %.0f원 절감 예상",
-                            params.getCommitYears(), (int)(commitLevel * 100), displaySavings);
+                            "%d년 장기 약정, %d%% 커버리지로 연 약 %.0f원 절감 예상",
+                            params.getCommitYears(), (int)(commitLevel * 100), yearlySavings);
                     
                     SimulationResult result = SimulationResult.builder()
                             .scenarioName(scenarioName)
@@ -257,9 +259,10 @@ public class SimulationService {
                     String scenarioName = String.format("Storage 수명주기 (%d일): %s", retention, resourceId);
                     // 절감액이 0보다 작으면 0으로 표시
                     double displaySavings = Math.max(0.0, savings);
+                    double yearlySavings = displaySavings * 12.0;
                     String description = String.format(
-                            "%d일 미접근 객체를 %s로 이동하여 월 약 %.0f원 절감 예상",
-                            retention, params.getTargetTier(), displaySavings);
+                            "%d일 미접근 객체를 %s로 이동하여 연 약 %.0f원 절감 예상",
+                            retention, params.getTargetTier(), yearlySavings);
                     
                     SimulationResult result = SimulationResult.builder()
                             .scenarioName(scenarioName)
@@ -326,9 +329,10 @@ public class SimulationService {
                 // 시나리오 생성
                 String scenarioName = String.format("다운사이징: %s", resourceId);
                 double displaySavings = Math.max(0.0, savings);
+                double yearlySavings = displaySavings * 12.0;
                 String description = String.format(
-                        "CPU 및 메모리 사용률이 평균 %.1f%%로 낮아 한 단계 작은 인스턴스 타입으로 변경 시 월 약 %.0f원 절감 예상",
-                        avgUtilization, displaySavings);
+                        "CPU 및 메모리 사용률이 평균 %.1f%%로 낮아 한 단계 작은 인스턴스 타입으로 변경 시 연 약 %.0f원 절감 예상",
+                        avgUtilization, yearlySavings);
                 
                 SimulationResult result = SimulationResult.builder()
                         .scenarioName(scenarioName)
