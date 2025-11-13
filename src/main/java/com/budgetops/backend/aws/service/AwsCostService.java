@@ -1,5 +1,6 @@
 package com.budgetops.backend.aws.service;
 
+import com.budgetops.backend.aws.constants.FreeTierLimits;
 import com.budgetops.backend.aws.entity.AwsAccount;
 import com.budgetops.backend.aws.repository.AwsAccountRepository;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +16,9 @@ import software.amazon.awssdk.services.costexplorer.model.*;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
@@ -25,6 +28,7 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 public class AwsCostService {
     
     private final AwsAccountRepository accountRepository;
+    private final AwsUsageService usageService;
     
     /**
      * AWS 계정의 비용 조회
@@ -51,7 +55,7 @@ public class AwsCostService {
                             .end(endDate)
                             .build())
                     .granularity(Granularity.DAILY)
-                    .metrics("BlendedCost", "UnblendedCost")
+                    .metrics("BlendedCost", "UnblendedCost", "UsageQuantity")
                     .groupBy(GroupDefinition.builder()
                             .type(GroupDefinitionType.DIMENSION)
                             .key("SERVICE")
@@ -67,10 +71,17 @@ public class AwsCostService {
                 return dailyCosts; // 빈 리스트 반환
             }
             
+            // 사용량 데이터 수집 (프리티어 정보 포함)
+            List<AwsUsageService.ServiceUsage> usageData = usageService.getEc2Usage(accountId, startDate, endDate);
+            Map<String, AwsUsageService.ServiceUsage> usageMap = new HashMap<>();
+            for (AwsUsageService.ServiceUsage usage : usageData) {
+                usageMap.put(usage.service(), usage);
+            }
+            
             for (ResultByTime result : response.resultsByTime()) {
                 String date = result.timePeriod().start();
                 double totalCost = 0.0;
-                List<ServiceCost> serviceCosts = new ArrayList<>();
+                List<ServiceCostWithUsage> serviceCosts = new ArrayList<>();
                 
                 // groups가 null이거나 비어있을 수 있음 (비용이 없는 경우)
                 if (result.groups() != null && !result.groups().isEmpty()) {
@@ -80,18 +91,79 @@ public class AwsCostService {
                             try {
                                 String service = group.keys().get(0);
                                 String amount = group.metrics().get("BlendedCost").amount();
+                                double cost = 0.0;
+                                double usageQuantity = 0.0;
+                                
                                 if (amount != null && !amount.isEmpty()) {
-                                    double cost = Double.parseDouble(amount);
+                                    cost = Double.parseDouble(amount);
                                     totalCost += cost;
-                                    
-                                    if (cost > 0) {
-                                        serviceCosts.add(new ServiceCost(service, cost));
+                                }
+                                
+                                // 사용량 정보 추출
+                                if (group.metrics().containsKey("UsageQuantity")) {
+                                    String usageStr = group.metrics().get("UsageQuantity").amount();
+                                    if (usageStr != null && !usageStr.isEmpty()) {
+                                        usageQuantity = Double.parseDouble(usageStr);
                                     }
+                                }
+                                
+                                // 프리티어 정보 추가
+                                AwsUsageService.ServiceUsage usage = usageMap.get(service);
+                                FreeTierInfo freeTierInfo = null;
+                                
+                                if (usage != null) {
+                                    freeTierInfo = new FreeTierInfo(
+                                        usage.usage(),
+                                        usage.freeTierLimit(),
+                                        usage.isWithinFreeTier(),
+                                        cost == 0.0 && usage.isWithinFreeTier(),
+                                        FreeTierLimits.calculateEstimatedCostIfExceeded(
+                                            service, null, usage.usage(), null
+                                        )
+                                    );
+                                } else if (cost == 0.0 && usageQuantity > 0) {
+                                    // 비용이 0이지만 사용량이 있는 경우 프리티어 범위 내로 추정
+                                    freeTierInfo = new FreeTierInfo(
+                                        usageQuantity,
+                                        0.0, // 한도 정보 없음
+                                        true,
+                                        true,
+                                        0.0
+                                    );
+                                }
+                                
+                                if (cost > 0 || freeTierInfo != null) {
+                                    serviceCosts.add(new ServiceCostWithUsage(
+                                        service, 
+                                        cost, 
+                                        usageQuantity,
+                                        freeTierInfo
+                                    ));
                                 }
                             } catch (NumberFormatException e) {
                                 log.warn("Failed to parse cost amount for service: {}", e.getMessage());
                             }
                         }
+                    }
+                } else {
+                    // 비용 데이터가 없지만 사용량이 있는 경우 (프리티어 범위 내)
+                    for (AwsUsageService.ServiceUsage usage : usageData) {
+                        FreeTierInfo freeTierInfo = new FreeTierInfo(
+                            usage.usage(),
+                            usage.freeTierLimit(),
+                            usage.isWithinFreeTier(),
+                            true,
+                            FreeTierLimits.calculateEstimatedCostIfExceeded(
+                                usage.service(), null, usage.usage(), null
+                            )
+                        );
+                        
+                        serviceCosts.add(new ServiceCostWithUsage(
+                            usage.service(),
+                            0.0,
+                            usage.usage(),
+                            freeTierInfo
+                        ));
                     }
                 }
                 
@@ -197,8 +269,34 @@ public class AwsCostService {
     }
     
     // DTO 클래스들
-    public record DailyCost(String date, double totalCost, List<ServiceCost> services) {}
+    public record DailyCost(String date, double totalCost, List<ServiceCostWithUsage> services) {}
+    
+    /**
+     * 서비스별 비용 정보 (사용량 및 프리티어 정보 포함)
+     */
+    public record ServiceCostWithUsage(
+        String service,
+        double cost,
+        double usageQuantity,
+        FreeTierInfo freeTierInfo
+    ) {}
+    
+    /**
+     * 프리티어 정보
+     */
+    public record FreeTierInfo(
+        double usage,                    // 실제 사용량
+        double freeTierLimit,            // 프리티어 한도
+        boolean isWithinFreeTier,        // 프리티어 범위 내 여부
+        boolean isFreeTierActive,        // 프리티어가 적용 중인지 (비용이 0원인 경우)
+        double estimatedCostIfExceeded  // 프리티어 초과 시 예상 비용
+    ) {}
+    
+    /**
+     * 기존 ServiceCost (하위 호환성 유지)
+     */
     public record ServiceCost(String service, double cost) {}
+    
     public record MonthlyCost(int year, int month, double totalCost) {}
     public record AccountCost(Long accountId, String accountName, double totalCost) {}
 }

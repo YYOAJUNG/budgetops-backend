@@ -111,11 +111,11 @@ public class SimulationService {
                 double priorityScore = costEngine.calculatePriorityScore(savings, riskScore, 2);
                 
                 // 시나리오 생성
-                String scenarioName = String.format("Off-hours 스케줄링: %s", resourceId);
+                String scenarioName = String.format("비업무 시간 자동 중지: %s", resourceId);
                 // 절감액이 0보다 작으면 0으로 표시
                 double displaySavings = Math.max(0.0, savings);
                 String description = String.format(
-                        "주중 %s~%s 중단으로 월 약 %.0f원 절감 예상",
+                        "주중 %s~%s 시간대에 자동 중지하여 월 약 %.0f원 절감 예상",
                         params.getStopAt(), params.getStartAt(), displaySavings);
                 
                 SimulationResult result = SimulationResult.builder()
@@ -185,12 +185,12 @@ public class SimulationService {
                     double riskScore = costEngine.calculateRiskScore(metrics, "low");
                     double priorityScore = costEngine.calculatePriorityScore(savings, riskScore, 3);
                     
-                    String scenarioName = String.format("Commitment 최적화 (%d%%): %s", 
+                    String scenarioName = String.format("장기 약정 할인 (%d%%): %s", 
                             (int)(commitLevel * 100), resourceId);
                     // 절감액이 0보다 작으면 0으로 표시
                     double displaySavings = Math.max(0.0, savings);
                     String description = String.format(
-                            "%d년 약정, %d%% 커버리지로 월 약 %.0f원 절감 예상",
+                            "%d년 장기 약정, %d%% 커버리지로 월 약 %.0f원 절감 예상",
                             params.getCommitYears(), (int)(commitLevel * 100), displaySavings);
                     
                     SimulationResult result = SimulationResult.builder()
@@ -284,11 +284,71 @@ public class SimulationService {
     }
     
     /**
-     * Rightsizing 시뮬레이션
+     * Rightsizing (다운사이징) 시뮬레이션
+     * 적용 대상: EC2/GCE/Azure VM, RDS/Cloud SQL/SQL DB
      */
     private List<SimulationResult> simulateRightsizing(SimulateRequest request) {
-        // TODO: 구현
-        return new ArrayList<>();
+        List<SimulationResult> results = new ArrayList<>();
+        
+        for (String resourceId : request.getResourceIds()) {
+            try {
+                ResourceInfo resource = getResourceInfo(resourceId);
+                PricingInfo pricing = getPricingInfo(resource);
+                UsageMetrics metrics = getUsageMetrics(resourceId, resource);
+                
+                // 평균 사용률이 40% 미만인 경우만 다운사이징 추천
+                double avgUtilization = metrics.getAvg() != null ? metrics.getAvg() : 50.0;
+                if (avgUtilization >= 40.0) {
+                    continue;
+                }
+                
+                // 현재 비용 계산
+                double currentCost = costEngine.calculateCurrentCost(
+                        pricing.getUnitPrice(), 1.0, pricing.getUnit());
+                
+                // 다운사이징 시 약 30-50% 비용 절감 가정 (인스턴스 타입에 따라 다름)
+                // 사용률이 낮을수록 더 많은 절감 가능
+                double savingsRate = Math.min(0.5, 0.3 + (40.0 - avgUtilization) / 100.0); // 30-50% 절감
+                double savings = currentCost * savingsRate;
+                
+                // 절감액이 음수가 되지 않도록 보장
+                savings = Math.max(0.0, savings);
+                
+                // 변경 후 비용 계산
+                double newCost = Math.max(0.0, currentCost - savings);
+                
+                // 리스크 스코어 계산 (다운사이징은 중간 리스크)
+                double riskScore = 0.3; // 중간 리스크
+                
+                // 우선순위 점수 계산 (적용 난이도: 3)
+                double priorityScore = costEngine.calculatePriorityScore(savings, riskScore, 3);
+                
+                // 시나리오 생성
+                String scenarioName = String.format("다운사이징: %s", resourceId);
+                double displaySavings = Math.max(0.0, savings);
+                String description = String.format(
+                        "CPU 및 메모리 사용률이 평균 %.1f%%로 낮아 한 단계 작은 인스턴스 타입으로 변경 시 월 약 %.0f원 절감 예상",
+                        avgUtilization, displaySavings);
+                
+                SimulationResult result = SimulationResult.builder()
+                        .scenarioName(scenarioName)
+                        .currentCost(currentCost)
+                        .newCost(newCost)
+                        .savings(savings)
+                        .riskScore(riskScore)
+                        .priorityScore(priorityScore)
+                        .confidence(1.0 - riskScore)
+                        .description(description)
+                        .build();
+                
+                results.add(result);
+                
+            } catch (Exception e) {
+                log.warn("Failed to simulate rightsizing for resource {}: {}", resourceId, e.getMessage());
+            }
+        }
+        
+        return results;
     }
     
     /**
