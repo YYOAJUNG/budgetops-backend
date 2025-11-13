@@ -161,19 +161,24 @@ public class RecommendationService {
             // 절감액이 음수인 경우 0으로 처리
             double safeSavings = Math.max(0.0, result.getSavings());
             
-            // description에서 음수 절감액 제거
+            // description에서 음수 절감액 제거 및 연 기준으로 통일
             String safeDescription = result.getDescription();
             if (safeDescription != null) {
                 // "-1원", "-123원" 같은 패턴을 "0원"으로 변경
-                safeDescription = safeDescription.replaceAll("월 약 -\\d+원", "월 약 0원");
+                safeDescription = safeDescription.replaceAll("월 약 -\\d+원", "연 약 0원");
                 safeDescription = safeDescription.replaceAll("약 -\\d+원", "약 0원");
                 safeDescription = safeDescription.replaceAll("-\\d+원 절감", "0원 절감");
+                // "월 약"을 "연 약"으로 변경 (이미 연 기준으로 변환된 경우)
+                safeDescription = safeDescription.replaceAll("월 약", "연 약");
             }
             
+            // 1년 기준 절감액 계산 (월 절감액 * 12)
+            double yearlySavings = safeSavings * 12.0;
+            
             recommendations.add(RecommendationResponse.builder()
-                    .title(generateTitle(actionType, safeSavings))
+                    .title(generateTitle(actionType, yearlySavings))
                     .description(safeDescription) // 안전한 설명 사용
-                    .estimatedSavings(safeSavings)
+                    .estimatedSavings(yearlySavings) // 1년 기준 절감액
                     .actionType(actionType.getCode())
                     .scenario(enhancedResult) // 룰 기반 설명이 포함된 시나리오
                     .build());
@@ -233,16 +238,16 @@ public class RecommendationService {
     }
     
     /**
-     * 액션 타입별 제목 생성
+     * 액션 타입별 제목 생성 (1년 기준)
      */
     private String generateTitle(ActionType actionType, Double savings) {
         // 절감액이 음수이면 0으로 처리
         double safeSavings = Math.max(0.0, savings != null ? savings : 0.0);
         return switch (actionType) {
-            case OFFHOURS -> String.format("비업무 시간 자동 중지로 월 최대 %.0f원 절감", safeSavings);
-            case COMMITMENT -> String.format("장기 약정 할인으로 %.0f원 절감", safeSavings);
-            case RIGHTSIZING -> String.format("인스턴스 다운사이징으로 %.0f원 절감", safeSavings);
-            case STORAGE -> String.format("스토리지 아카이빙으로 %.0f원 절감", safeSavings);
+            case OFFHOURS -> String.format("비업무 시간 자동 중지로 연 최대 %.0f원 절감", safeSavings);
+            case COMMITMENT -> String.format("장기 약정 할인으로 연 %.0f원 절감", safeSavings);
+            case RIGHTSIZING -> String.format("인스턴스 다운사이징으로 연 %.0f원 절감", safeSavings);
+            case STORAGE -> String.format("스토리지 아카이빙으로 연 %.0f원 절감", safeSavings);
             default -> "비용 최적화 추천";
         };
     }
