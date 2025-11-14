@@ -110,24 +110,19 @@ public class ProposalService {
      */
     @Transactional
     public ProposalResponse rejectProposal(String proposalId) {
-        Proposal proposal = proposalRepository.findByProposalId(proposalId)
-                .orElseThrow(() -> new RuntimeException("제안서를 찾을 수 없습니다: " + proposalId));
-        
-        if (proposal.getStatus() != Proposal.ProposalStatus.PENDING) {
-            throw new IllegalStateException("승인 대기 중인 제안서만 거부할 수 있습니다.");
-        }
-        
-        proposal.setStatus(Proposal.ProposalStatus.REJECTED);
-        proposal = proposalRepository.save(proposal);
+        final var proposal = proposalRepository.findByProposalId(proposalId)
+                .orElseThrow(() -> new RuntimeException("제안서를 찾을 수 없습니다: " + proposalId))
+                .rejectProposal();
+        final var savedProposal = proposalRepository.save(proposal);
         
         log.info("Rejected proposal: proposalId={}", proposalId);
         
         return ProposalResponse.builder()
-                .proposalId(proposal.getProposalId())
-                .status(proposal.getStatus().name())
-                .createdAt(proposal.getCreatedAt())
-                .expiresAt(proposal.getExpiresAt())
-                .note(proposal.getNote())
+                .proposalId(savedProposal.getProposalId())
+                .status(savedProposal.getStatus().name())
+                .createdAt(savedProposal.getCreatedAt())
+                .expiresAt(savedProposal.getExpiresAt())
+                .note(savedProposal.getNote())
                 .build();
     }
 }
