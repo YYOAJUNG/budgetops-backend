@@ -113,17 +113,10 @@ public class ProposalService {
         final var proposal = proposalRepository.findByProposalId(proposalId)
                 .orElseThrow(() -> new RuntimeException("제안서를 찾을 수 없습니다: " + proposalId))
                 .rejectProposal();
-        final var savedProposal = proposalRepository.save(proposal);
-        
+
         log.info("Rejected proposal: proposalId={}", proposalId);
         
-        return ProposalResponse.builder()
-                .proposalId(savedProposal.getProposalId())
-                .status(savedProposal.getStatus().name())
-                .createdAt(savedProposal.getCreatedAt())
-                .expiresAt(savedProposal.getExpiresAt())
-                .note(savedProposal.getNote())
-                .build();
+        return ProposalResponse.fromReject(proposalRepository.save(proposal));
     }
 }
 

@@ -1,7 +1,9 @@
 package com.budgetops.backend.simulator.dto;
 
+import com.budgetops.backend.simulator.entity.Proposal;
 import lombok.Builder;
 import lombok.Value;
+
 import java.time.LocalDateTime;
 
 /**
@@ -16,5 +18,15 @@ public class ProposalResponse {
     LocalDateTime expiresAt;
     SimulationResult scenario;
     String note;
+
+    public static ProposalResponse fromReject(Proposal proposal) {
+        return ProposalResponse.builder()
+                .proposalId(proposal.getProposalId())
+                .status(proposal.getStatus().name())
+                .createdAt(proposal.getCreatedAt())
+                .expiresAt(proposal.getExpiresAt())
+                .note(proposal.getNote())
+                .build();
+    }
 }
 
