@@ -45,10 +45,27 @@ RUN for i in 1 2 3; do \
 
 # 3) 소스 복사 후 빌드 (테스트 제외)
 COPY src ./src
-RUN ./gradlew --no-daemon clean bootJar -x test --stacktrace --warning-mode all 2>&1 | tee /tmp/build.log || (echo "Build failed. Last 100 lines:" && tail -100 /tmp/build.log && exit 1)
+
+# 빌드 실행 및 결과 확인
+RUN set -o pipefail && \
+    ./gradlew --no-daemon clean bootJar -x test --stacktrace --warning-mode all 2>&1 | tee /tmp/build.log || \
+    (echo "========== BUILD FAILED ==========" && \
+     echo "Last 100 lines of build log:" && \
+     tail -100 /tmp/build.log && \
+     echo "========== Checking build directory ==========" && \
+     ls -lah /app/build/ 2>/dev/null || echo "build directory does not exist" && \
+     echo "========== Checking for any JAR files ==========" && \
+     find /app -name "*.jar" 2>/dev/null || echo "No JAR files found" && \
+     exit 1)
 
 # 빌드 결과 확인
-RUN ls -lah /app/build/libs/ || (echo "JAR file not found in build/libs/" && exit 1)
+RUN echo "========== Build successful, checking JAR file ==========" && \
+    ls -lah /app/build/libs/ && \
+    ls -lah /app/build/libs/*.jar || \
+    (echo "JAR file not found in build/libs/" && \
+     echo "Contents of build directory:" && \
+     find /app/build -type f 2>/dev/null | head -20 && \
+     exit 1)
 
 # ---- Runtime stage ----
 FROM eclipse-temurin:21-jre
