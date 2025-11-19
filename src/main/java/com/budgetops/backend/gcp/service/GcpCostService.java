@@ -1,6 +1,7 @@
 package com.budgetops.backend.gcp.service;
 
 import com.budgetops.backend.gcp.dto.GcpAccountDailyCostsResponse;
+import com.budgetops.backend.gcp.dto.GcpAllAccountsCostsResponse;
 import com.budgetops.backend.gcp.entity.GcpAccount;
 import com.budgetops.backend.gcp.repository.GcpAccountRepository;
 import com.google.auth.oauth2.ServiceAccountCredentials;
@@ -134,6 +135,78 @@ public class GcpCostService {
             log.error("Failed to fetch GCP costs for account {}: {}", accountId, e.getMessage(), e);
             throw new RuntimeException("GCP 비용 조회 실패: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 모든 GCP 계정의 비용 통합 조회
+     * 
+     * @param startDate 시작 날짜 (YYYY-MM-DD 형식)
+     * @param endDate 종료 날짜 (YYYY-MM-DD 형식)
+     * @return 모든 계정의 비용 통합 정보
+     * 
+     * TODO: 계정별로 통화가 다른 경우 처리 필요
+     * - 현재는 모든 계정의 비용을 단순 합산하고 있으나, 통화가 다르면 의미 없는 값이 됨
+     * - 해결 방안:
+     *   1. 통화 변환 API를 사용하여 기준 통화로 변환 후 합산
+     *   2. 통화별로 그룹화하여 summary를 통화별로 제공
+     *   3. 통화가 다른 경우 에러 또는 경고 반환
+     */
+    @Transactional(readOnly = true)
+    public GcpAllAccountsCostsResponse getAllAccountsCosts(String startDate, String endDate) {
+        List<GcpAccount> accounts = accountRepository.findAll();
+        
+        GcpAllAccountsCostsResponse response = new GcpAllAccountsCostsResponse();
+        List<GcpAllAccountsCostsResponse.AccountCost> accountCosts = new ArrayList<>();
+        
+        double totalGrossCost = 0.0;
+        double totalCreditUsed = 0.0;
+        double totalNetCost = 0.0;
+        String currency = "USD";
+        boolean currencySet = false;
+        
+        for (GcpAccount account : accounts) {
+            try {
+                GcpAccountDailyCostsResponse accountCostResponse = getCosts(account.getId(), startDate, endDate);
+                
+                GcpAllAccountsCostsResponse.AccountCost accountCost = new GcpAllAccountsCostsResponse.AccountCost();
+                accountCost.setAccountId(accountCostResponse.getAccountId());
+                accountCost.setAccountName(accountCostResponse.getAccountName());
+                accountCost.setCurrency(accountCostResponse.getCurrency());
+                accountCost.setTotalGrossCost(accountCostResponse.getTotalGrossCost());
+                accountCost.setTotalCreditUsed(accountCostResponse.getTotalCreditUsed());
+                accountCost.setTotalNetCost(accountCostResponse.getTotalNetCost());
+                accountCosts.add(accountCost);
+                
+                // 통화는 첫 번째 계정의 통화를 사용 (모든 계정이 같은 통화를 사용한다고 가정)
+                // TODO: 통화가 다른 경우 처리 필요
+                if (!currencySet && accountCostResponse.getCurrency() != null) {
+                    currency = accountCostResponse.getCurrency();
+                    currencySet = true;
+                }
+                
+                // 총합 계산
+                // TODO: 통화가 다른 경우 단순 합산은 의미 없음 - 통화 변환 필요
+                totalGrossCost += accountCostResponse.getTotalGrossCost();
+                totalCreditUsed += accountCostResponse.getTotalCreditUsed();
+                totalNetCost += accountCostResponse.getTotalNetCost();
+                
+            } catch (Exception e) {
+                log.warn("Failed to fetch costs for account {}: {}", account.getId(), e.getMessage());
+                // 계정 조회 실패 시 해당 계정은 건너뛰고 계속 진행
+            }
+        }
+        
+        // Summary 생성
+        GcpAllAccountsCostsResponse.Summary summary = new GcpAllAccountsCostsResponse.Summary();
+        summary.setCurrency(currency);
+        summary.setTotalGrossCost(roundToFirstDecimal(totalGrossCost));
+        summary.setTotalCreditUsed(roundToFirstDecimal(totalCreditUsed));
+        summary.setTotalNetCost(roundToFirstDecimal(totalNetCost));
+        
+        response.setSummary(summary);
+        response.setAccounts(accountCosts);
+        
+        return response;
     }
     
     /**
