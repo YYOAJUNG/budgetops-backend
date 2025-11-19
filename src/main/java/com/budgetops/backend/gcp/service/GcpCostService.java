@@ -1,5 +1,6 @@
 package com.budgetops.backend.gcp.service;
 
+import com.budgetops.backend.gcp.dto.GcpAccountDailyCostsResponse;
 import com.budgetops.backend.gcp.entity.GcpAccount;
 import com.budgetops.backend.gcp.repository.GcpAccountRepository;
 import com.google.auth.oauth2.ServiceAccountCredentials;
@@ -16,8 +17,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -30,8 +29,6 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 @RequiredArgsConstructor
 public class GcpCostService {
 
-    private static final DateTimeFormatter ISO_DATE = DateTimeFormatter.ISO_LOCAL_DATE;
-
     private final GcpAccountRepository accountRepository;
 
     /**
@@ -40,21 +37,37 @@ public class GcpCostService {
      * @param accountId GCP 계정 ID
      * @param startDate 시작 날짜 (YYYY-MM-DD 형식)
      * @param endDate 종료 날짜 (YYYY-MM-DD 형식)
-     * @return 일별 비용 목록
+     * @return 계정별 일별 비용 정보
      */
     @Transactional(readOnly = true)
-    public List<DailyCost> getCosts(Long accountId, String startDate, String endDate) {
+    public GcpAccountDailyCostsResponse getCosts(Long accountId, String startDate, String endDate) {
         GcpAccount account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "GCP 계정을 찾을 수 없습니다."));
 
         if (account.getBillingAccountId() == null || account.getBillingAccountId().isBlank()) {
             log.warn("GCP 계정 {}에 빌링 계정 ID가 설정되지 않았습니다.", accountId);
-            return new ArrayList<>();
+            GcpAccountDailyCostsResponse response = new GcpAccountDailyCostsResponse();
+            response.setAccountId(accountId);
+            response.setAccountName(account.getName());
+            response.setCurrency("USD");
+            response.setTotalGrossCost(0.0);
+            response.setTotalCreditUsed(0.0);
+            response.setTotalNetCost(0.0);
+            response.setDailyCosts(new ArrayList<>());
+            return response;
         }
 
         if (account.getBillingExportDatasetId() == null || account.getBillingExportDatasetId().isBlank()) {
             log.warn("GCP 계정 {}에 빌링 내보내기 데이터셋이 설정되지 않았습니다.", accountId);
-            return new ArrayList<>();
+            GcpAccountDailyCostsResponse response = new GcpAccountDailyCostsResponse();
+            response.setAccountId(accountId);
+            response.setAccountName(account.getName());
+            response.setCurrency("USD");
+            response.setTotalGrossCost(0.0);
+            response.setTotalCreditUsed(0.0);
+            response.setTotalNetCost(0.0);
+            response.setDailyCosts(new ArrayList<>());
+            return response;
         }
 
         log.info("Fetching GCP costs for account {} from {} to {}", accountId, startDate, endDate);
@@ -76,7 +89,14 @@ public class GcpCostService {
             if (tableNames.isEmpty()) {
                 log.warn("Billing export 테이블을 찾을 수 없습니다. accountId: {}, billingId: {}", 
                         accountId, account.getBillingAccountId());
-                return new ArrayList<>();
+                GcpAccountDailyCostsResponse response = new GcpAccountDailyCostsResponse();
+                response.setAccountId(accountId);
+                response.setAccountName(account.getName());
+                response.setCurrency("USD");
+                response.setTotalNetCost(0.0);
+                response.setTotalGrossCost(0.0);
+                response.setDailyCosts(new ArrayList<>());
+                return response;
             }
 
             // BigQuery 쿼리 실행
@@ -85,20 +105,37 @@ public class GcpCostService {
             TableResult result = bigQuery.query(queryConfig);
 
             // 결과 파싱
-            List<DailyCost> dailyCosts = parseDailyCosts(result);
+            ParseResult parseResult = parseDailyCosts(result);
             
-            log.info("Successfully fetched {} days of cost data for account {} (total cost: {})", 
-                    dailyCosts.size(), accountId, 
-                    dailyCosts.stream().mapToDouble(DailyCost::totalCost).sum());
+            // totalGrossCost, totalCreditUsed, totalNetCost 계산
+            double totalGrossCost = roundToFirstDecimal(parseResult.dailyCosts().stream()
+                    .mapToDouble(GcpAccountDailyCostsResponse.DailyCost::getGrossCost)
+                    .sum());
+            double totalCreditUsed = roundToFirstDecimal(parseResult.dailyCosts().stream()
+                    .mapToDouble(GcpAccountDailyCostsResponse.DailyCost::getCreditUsed)
+                    .sum());
+            double totalNetCost = roundToFirstDecimal(totalGrossCost - totalCreditUsed);
             
-            return dailyCosts;
+            GcpAccountDailyCostsResponse response = new GcpAccountDailyCostsResponse();
+            response.setAccountId(accountId);
+            response.setAccountName(account.getName());
+            response.setCurrency(parseResult.currency());
+            response.setTotalGrossCost(totalGrossCost);
+            response.setTotalCreditUsed(totalCreditUsed);
+            response.setTotalNetCost(totalNetCost);
+            response.setDailyCosts(parseResult.dailyCosts());
+            
+            log.info("Successfully fetched {} days of cost data for account {} (total gross cost: {}, total credit used: {}, total net cost: {})", 
+                    parseResult.dailyCosts().size(), accountId, totalGrossCost, totalCreditUsed, totalNetCost);
+            
+            return response;
 
         } catch (Exception e) {
             log.error("Failed to fetch GCP costs for account {}: {}", accountId, e.getMessage(), e);
             throw new RuntimeException("GCP 비용 조회 실패: " + e.getMessage(), e);
         }
     }
-
+    
     /**
      * Billing Export 테이블 이름 목록 찾기
      * 실제 존재하는 테이블들을 모두 찾아서 반환
@@ -178,15 +215,14 @@ public class GcpCostService {
             return String.format(
                 "SELECT " +
                 "  DATE(usage_start_time) as date, " +
-                "  service.description as service, " +
-                "  SUM(cost) as cost, " +
-                "  SUM(usage.amount) as usage_amount, " +
-                "  currency " +
+                "  ROUND(SUM(CASE WHEN cost > 0 THEN cost ELSE 0 END), 1) as gross_cost, " +
+                "  ROUND(SUM(COALESCE((SELECT SUM(ABS(amount)) FROM UNNEST(credits) WHERE amount < 0), 0)), 1) as credit_used_from_credits, " +
+                "  ANY_VALUE(currency) as currency " +
                 "FROM `%s.%s.%s` " +
                 "WHERE DATE(usage_start_time) >= '%s' " +
                 "  AND DATE(usage_start_time) < '%s' " +
-                "GROUP BY date, service, currency " +
-                "ORDER BY date, service",
+                "GROUP BY date " +
+                "ORDER BY date",
                 projectId, datasetId, tableNames.get(0), startDate, endDate
             );
         }
@@ -200,9 +236,8 @@ public class GcpCostService {
             query.append(String.format(
                 "SELECT " +
                 "  DATE(usage_start_time) as date, " +
-                "  service.description as service, " +
-                "  cost, " +
-                "  usage.amount as usage_amount, " +
+                "  CASE WHEN cost > 0 THEN cost ELSE 0 END as gross_cost, " +
+                "  COALESCE((SELECT SUM(ABS(amount)) FROM UNNEST(credits) WHERE amount < 0), 0) as credit_used_from_credits, " +
                 "  currency " +
                 "FROM `%s.%s.%s` " +
                 "WHERE DATE(usage_start_time) >= '%s' " +
@@ -211,80 +246,66 @@ public class GcpCostService {
             ));
         }
         
-        // 최종 집계
+        // 최종 집계 (반올림 적용)
         return String.format(
             "SELECT " +
             "  date, " +
-            "  service, " +
-            "  SUM(cost) as cost, " +
-            "  SUM(usage_amount) as usage_amount, " +
-            "  currency " +
+            "  ROUND(SUM(gross_cost), 1) as gross_cost, " +
+            "  ROUND(SUM(credit_used_from_credits), 1) as credit_used_from_credits, " +
+            "  ANY_VALUE(currency) as currency " +
             "FROM (%s) " +
-            "GROUP BY date, service, currency " +
-            "ORDER BY date, service",
+            "GROUP BY date " +
+            "ORDER BY date",
             query.toString()
         );
     }
 
     /**
-     * BigQuery 결과를 DailyCost 리스트로 변환
+     * 파싱 결과를 담는 레코드
      */
-    private List<DailyCost> parseDailyCosts(TableResult result) {
-        Map<String, DailyCostBuilder> dailyCostMap = new HashMap<>();
-        
-        result.iterateAll().forEach(row -> {
-            String date = row.get("date").getStringValue();
-            String service = row.get("service") != null ? row.get("service").getStringValue() : "Unknown";
-            double cost = row.get("cost") != null ? row.get("cost").getDoubleValue() : 0.0;
-            double usageAmount = row.get("usage_amount") != null ? row.get("usage_amount").getDoubleValue() : 0.0;
-            String currency = row.get("currency") != null ? row.get("currency").getStringValue() : "USD";
-            
-            DailyCostBuilder builder = dailyCostMap.computeIfAbsent(date, k -> new DailyCostBuilder(date));
-            builder.addService(service, cost, usageAmount, currency);
-        });
-        
-        return dailyCostMap.values().stream()
-                .map(DailyCostBuilder::build)
-                .sorted((a, b) -> a.date().compareTo(b.date()))
-                .toList();
-    }
-
-    /**
-     * DailyCost 빌더 클래스
-     */
-    private static class DailyCostBuilder {
-        private final String date;
-        private double totalCost = 0.0;
-        private final List<ServiceCost> services = new ArrayList<>();
-        private String currency = "USD";
-
-        DailyCostBuilder(String date) {
-            this.date = date;
-        }
-
-        void addService(String service, double cost, double usageAmount, String currency) {
-            this.totalCost += cost;
-            this.currency = currency; // 마지막 통화 사용 (일반적으로 모두 동일)
-            services.add(new ServiceCost(service, cost, usageAmount));
-        }
-
-        DailyCost build() {
-            return new DailyCost(date, totalCost, new ArrayList<>(services), currency);
-        }
-    }
-
-    // DTO 클래스들
-    public record DailyCost(
-        String date,
-        double totalCost,
-        List<ServiceCost> services,
+    private record ParseResult(
+        List<GcpAccountDailyCostsResponse.DailyCost> dailyCosts,
         String currency
     ) {}
-
-    public record ServiceCost(
-        String service,
-        double cost,
-        double usageAmount
-    ) {}
+    
+    /**
+     * BigQuery 결과를 DailyCost 리스트로 변환 (날짜별로 이미 집계된 값 사용)
+     */
+    private ParseResult parseDailyCosts(TableResult result) {
+        List<GcpAccountDailyCostsResponse.DailyCost> dailyCosts = new ArrayList<>();
+        String currency = "USD";
+        boolean currencySet = false;
+        
+        for (var row : result.iterateAll()) {
+            String date = row.get("date").getStringValue();
+            double grossCost = row.get("gross_cost") != null ? row.get("gross_cost").getDoubleValue() : 0.0;
+            double creditUsed = row.get("credit_used_from_credits") != null ? row.get("credit_used_from_credits").getDoubleValue() : 0.0;
+            double netCost = roundToFirstDecimal(grossCost - creditUsed);
+            
+            if (!currencySet && row.get("currency") != null) {
+                currency = row.get("currency").getStringValue();
+                currencySet = true;
+            }
+            
+            GcpAccountDailyCostsResponse.DailyCost dailyCost = new GcpAccountDailyCostsResponse.DailyCost();
+            dailyCost.setDate(date);
+            dailyCost.setGrossCost(grossCost);
+            dailyCost.setCreditUsed(creditUsed);
+            dailyCost.setNetCost(netCost);
+            dailyCosts.add(dailyCost);
+        }
+        
+        // 날짜순으로 정렬
+        dailyCosts.sort((a, b) -> a.getDate().compareTo(b.getDate()));
+        
+        return new ParseResult(dailyCosts, currency);
+    }
+    
+    /**
+     * 값을 소수점 첫째자리로 반올림
+     */
+    private double roundToFirstDecimal(double value) {
+        return Math.round(value * 10.0) / 10.0;
+    }
 }
 

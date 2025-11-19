@@ -1,5 +1,6 @@
 package com.budgetops.backend.gcp.controller;
 
+import com.budgetops.backend.gcp.dto.GcpAccountDailyCostsResponse;
 import com.budgetops.backend.gcp.service.GcpCostService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -7,7 +8,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
-import java.util.List;
 
 /**
  * GCP 비용 조회 컨트롤러
@@ -28,7 +28,7 @@ public class GcpCostController {
      * GET /api/gcp/accounts/{accountId}/costs
      */
     @GetMapping("/accounts/{accountId}/costs")
-    public ResponseEntity<List<GcpCostService.DailyCost>> getAccountCosts(
+    public ResponseEntity<GcpAccountDailyCostsResponse> getAccountCosts(
             @PathVariable Long accountId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
@@ -41,12 +41,12 @@ public class GcpCostController {
             endDate = LocalDate.now().plusDays(1); // endDate는 exclusive
         }
 
-        List<GcpCostService.DailyCost> costs = costService.getCosts(
+        GcpAccountDailyCostsResponse response = costService.getCosts(
                 accountId,
                 startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE),
                 endDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
         );
-        return ResponseEntity.ok(costs);
+        return ResponseEntity.ok(response);
     }
 
     /**
