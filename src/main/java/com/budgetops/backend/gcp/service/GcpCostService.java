@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -135,6 +136,36 @@ public class GcpCostService {
             log.error("Failed to fetch GCP costs for account {}: {}", accountId, e.getMessage(), e);
             throw new RuntimeException("GCP 비용 조회 실패: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * GCP 계정의 월별 비용 조회
+     * 
+     * @param accountId GCP 계정 ID
+     * @param year 연도
+     * @param month 월 (1-12)
+     * @return 월별 비용 정보
+     */
+    @Transactional(readOnly = true)
+    public MonthlyCost getMonthlyCost(Long accountId, int year, int month) {
+        LocalDate startDate = LocalDate.of(year, month, 1);
+        LocalDate endDate = startDate.plusMonths(1);
+        
+        String startDateStr = startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
+        String endDateStr = endDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
+        
+        GcpAccountDailyCostsResponse dailyCostsResponse = getCosts(accountId, startDateStr, endDateStr);
+        
+        return new MonthlyCost(
+                dailyCostsResponse.getAccountId(),
+                dailyCostsResponse.getAccountName(),
+                year,
+                month,
+                dailyCostsResponse.getTotalGrossCost(),
+                dailyCostsResponse.getTotalCreditUsed(),
+                dailyCostsResponse.getTotalNetCost(),
+                dailyCostsResponse.getCurrency()
+        );
     }
 
     /**
@@ -380,5 +411,19 @@ public class GcpCostService {
     private double roundToFirstDecimal(double value) {
         return Math.round(value * 10.0) / 10.0;
     }
+    
+    /**
+     * 월별 비용 정보
+     */
+    public record MonthlyCost(
+            Long accountId,
+            String accountName,
+            int year,
+            int month,
+            double totalGrossCost,
+            double totalCreditUsed,
+            double totalNetCost,
+            String currency
+    ) {}
 }
 

@@ -75,8 +75,17 @@ public class GcpCostController {
     }
 
     /**
-     * TODO: 특정 계정의 월별 비용 조회
+     * 특정 계정의 월별 비용 조회
      * GET /api/gcp/accounts/{accountId}/costs/monthly
      */
+    @GetMapping("/accounts/{accountId}/costs/monthly")
+    public ResponseEntity<GcpCostService.MonthlyCost> getAccountMonthlyCost(
+            @PathVariable Long accountId,
+            @RequestParam int year,
+            @RequestParam int month
+    ) {
+        GcpCostService.MonthlyCost monthlyCost = costService.getMonthlyCost(accountId, year, month);
+        return ResponseEntity.ok(monthlyCost);
+    }
 }
 
