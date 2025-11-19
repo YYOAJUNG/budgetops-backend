@@ -21,6 +21,7 @@ public class GcpAllAccountsCostsResponse {
         private double totalGrossCost;
         private double totalCreditUsed;
         private double totalNetCost;
+        private double totalDisplayNetCost; // 표시용 netCost (음수면 0)
     }
 
     @Getter
@@ -32,6 +33,7 @@ public class GcpAllAccountsCostsResponse {
         private double totalGrossCost;
         private double totalCreditUsed;
         private double totalNetCost;
+        private double totalDisplayNetCost; // 표시용 netCost (음수면 0)
     }
 }
 

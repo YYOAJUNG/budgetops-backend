@@ -17,6 +17,7 @@ public class GcpAccountDailyCostsResponse {
     private double totalGrossCost;  // 프리티어/크레딧 공제 전 사용액
     private double totalCreditUsed; // 사용된 크레딧액
     private double totalNetCost;   // 실제 청구된 금액 (크레딧/프리티어 공제 후)
+    private double totalDisplayNetCost; // 표시용 netCost (음수면 0)
     private List<DailyCost> dailyCosts;
 
     @Getter
@@ -26,6 +27,7 @@ public class GcpAccountDailyCostsResponse {
         private double grossCost; // 프리티어/크레딧 공제 전 사용액
         private double creditUsed; // 사용된 크레딧액
         private double netCost;   // 실제 청구된 금액 (크레딧/프리티어 공제 후)
+        private double displayNetCost; // 표시용 netCost (음수면 0)
     }
 }
 

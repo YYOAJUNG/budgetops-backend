@@ -55,6 +55,7 @@ public class GcpCostService {
             response.setTotalGrossCost(0.0);
             response.setTotalCreditUsed(0.0);
             response.setTotalNetCost(0.0);
+            response.setTotalDisplayNetCost(0.0);
             response.setDailyCosts(new ArrayList<>());
             return response;
         }
@@ -68,6 +69,7 @@ public class GcpCostService {
             response.setTotalGrossCost(0.0);
             response.setTotalCreditUsed(0.0);
             response.setTotalNetCost(0.0);
+            response.setTotalDisplayNetCost(0.0);
             response.setDailyCosts(new ArrayList<>());
             return response;
         }
@@ -97,6 +99,8 @@ public class GcpCostService {
                 response.setCurrency("USD");
                 response.setTotalNetCost(0.0);
                 response.setTotalGrossCost(0.0);
+                response.setTotalCreditUsed(0.0);
+                response.setTotalDisplayNetCost(0.0);
                 response.setDailyCosts(new ArrayList<>());
                 return response;
             }
@@ -117,6 +121,7 @@ public class GcpCostService {
                     .mapToDouble(GcpAccountDailyCostsResponse.DailyCost::getCreditUsed)
                     .sum());
             double totalNetCost = roundToFirstDecimal(totalGrossCost - totalCreditUsed);
+            double totalDisplayNetCost = Math.max(0, totalNetCost);
             
             GcpAccountDailyCostsResponse response = new GcpAccountDailyCostsResponse();
             response.setAccountId(accountId);
@@ -125,6 +130,7 @@ public class GcpCostService {
             response.setTotalGrossCost(totalGrossCost);
             response.setTotalCreditUsed(totalCreditUsed);
             response.setTotalNetCost(totalNetCost);
+            response.setTotalDisplayNetCost(totalDisplayNetCost);
             response.setDailyCosts(parseResult.dailyCosts());
             
             log.info("Successfully fetched {} days of cost data for account {} (total gross cost: {}, total credit used: {}, total net cost: {})", 
@@ -164,6 +170,7 @@ public class GcpCostService {
                 dailyCostsResponse.getTotalGrossCost(),
                 dailyCostsResponse.getTotalCreditUsed(),
                 dailyCostsResponse.getTotalNetCost(),
+                Math.max(0, dailyCostsResponse.getTotalNetCost()),
                 dailyCostsResponse.getCurrency()
         );
     }
@@ -206,6 +213,7 @@ public class GcpCostService {
                 accountCost.setTotalGrossCost(accountCostResponse.getTotalGrossCost());
                 accountCost.setTotalCreditUsed(accountCostResponse.getTotalCreditUsed());
                 accountCost.setTotalNetCost(accountCostResponse.getTotalNetCost());
+                accountCost.setTotalDisplayNetCost(accountCostResponse.getTotalDisplayNetCost());
                 accountCosts.add(accountCost);
                 
                 // 통화는 첫 번째 계정의 통화를 사용 (모든 계정이 같은 통화를 사용한다고 가정)
@@ -232,7 +240,9 @@ public class GcpCostService {
         summary.setCurrency(currency);
         summary.setTotalGrossCost(roundToFirstDecimal(totalGrossCost));
         summary.setTotalCreditUsed(roundToFirstDecimal(totalCreditUsed));
-        summary.setTotalNetCost(roundToFirstDecimal(totalNetCost));
+        double finalTotalNetCost = roundToFirstDecimal(totalNetCost);
+        summary.setTotalNetCost(finalTotalNetCost);
+        summary.setTotalDisplayNetCost(Math.max(0, finalTotalNetCost));
         
         response.setSummary(summary);
         response.setAccounts(accountCosts);
@@ -396,6 +406,7 @@ public class GcpCostService {
             dailyCost.setGrossCost(grossCost);
             dailyCost.setCreditUsed(creditUsed);
             dailyCost.setNetCost(netCost);
+            dailyCost.setDisplayNetCost(Math.max(0, netCost));
             dailyCosts.add(dailyCost);
         }
         
@@ -423,6 +434,7 @@ public class GcpCostService {
             double totalGrossCost,
             double totalCreditUsed,
             double totalNetCost,
+            double displayNetCost, // 표시용 netCost (음수면 0)
             String currency
     ) {}
 }
