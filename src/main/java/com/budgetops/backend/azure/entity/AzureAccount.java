@@ -1,7 +1,7 @@
 package com.budgetops.backend.azure.entity;
 
 import com.budgetops.backend.aws.support.CryptoStringConverter;
-import com.budgetops.backend.billing.entity.Workspace;
+import com.budgetops.backend.domain.user.entity.Member;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -36,17 +36,16 @@ public class AzureAccount {
     private String clientSecretLast4;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "workspace_id", nullable = false)
-    private Workspace workspace;
+    @JoinColumn(name = "member_id", nullable = false)
+    private Member owner;
 
     private Boolean active = Boolean.TRUE;
 
     @PrePersist
     @PreUpdate
-    private void ensureWorkspaceAssigned() {
-        if (workspace == null) {
-            throw new IllegalStateException("Workspace must be assigned to Azure account before persisting.");
+    private void ensureOwnerAssigned() {
+        if (owner == null) {
+            throw new IllegalStateException("Owner must be assigned to Azure account before persisting.");
         }
     }
 }
-

@@ -39,7 +39,7 @@ public class AwsCostService {
      * @return 일별 비용 목록
      */
     public List<DailyCost> getCosts(Long accountId, Long memberId, String startDate, String endDate) {
-        AwsAccount account = accountRepository.findByIdAndWorkspaceOwnerId(accountId, memberId)
+        AwsAccount account = accountRepository.findByIdAndOwnerId(accountId, memberId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
         
         if (!Boolean.TRUE.equals(account.getActive())) {
@@ -223,7 +223,7 @@ public class AwsCostService {
      * @return 계정별 비용 목록
      */
     public List<AccountCost> getAllAccountsCosts(Long memberId, String startDate, String endDate) {
-        List<AwsAccount> activeAccounts = accountRepository.findByWorkspaceOwnerIdAndActiveTrue(memberId);
+        List<AwsAccount> activeAccounts = accountRepository.findByOwnerIdAndActiveTrue(memberId);
         log.info("Fetching costs for {} active account(s) from {} to {}", 
                 activeAccounts.size(), startDate, endDate);
         

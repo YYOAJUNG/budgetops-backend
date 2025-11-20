@@ -1,8 +1,6 @@
 package com.budgetops.backend.gcp.service;
 
 import com.budgetops.backend.gcp.dto.*;
-import com.budgetops.backend.billing.entity.Workspace;
-import com.budgetops.backend.billing.repository.WorkspaceRepository;
 import com.budgetops.backend.domain.user.entity.Member;
 import com.budgetops.backend.domain.user.repository.MemberRepository;
 import com.google.auth.oauth2.ServiceAccountCredentials;
@@ -15,6 +13,7 @@ import com.google.cloud.bigquery.Dataset;
 import com.google.cloud.bigquery.DatasetId;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,13 +23,13 @@ import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class GcpAccountService {
 
     private final GcpServiceAccountVerifier serviceAccountVerifier;
     private final GcpBillingAccountVerifier billingVerifier;
     private final GcpAccountRepository gcpAccountRepository;
     private final GcpResourceRepository gcpResourceRepository;
-    private final WorkspaceRepository workspaceRepository;
     private final MemberRepository memberRepository;
 
     public ServiceAccountTestResponse testServiceAccount(ServiceAccountTestRequest request) {
@@ -176,7 +175,6 @@ public class GcpAccountService {
         }
         try {
             Member member = getMemberOrThrow(memberId);
-            Workspace workspace = getOrCreateWorkspace(member);
             ServiceAccountCredentials credentials = GcpCredentialParser.parse(request.getServiceAccountKeyJson());
             String projectId = credentials.getProjectId();
 
@@ -199,14 +197,6 @@ public class GcpAccountService {
                 // 권한/구성이 아직 안되었을 수 있으므로 무시하고 계속 저장
             }
 
-            // 서비스 계정 ID 중복 체크
-            java.util.Optional<GcpAccount> existingAccount = gcpAccountRepository.findByServiceAccountId(request.getServiceAccountId());
-            if (existingAccount.isPresent()) {
-                res.setOk(false);
-                res.setMessage("이미 등록된 서비스 계정 ID입니다. 서비스 계정 ID: " + request.getServiceAccountId());
-                return res;
-            }
-
             // 빌링 계정 ID 형식 검증 및 정규화
             String billingAccountId = null;
             if (request.getBillingAccountId() != null && !request.getBillingAccountId().isBlank()) {
@@ -221,6 +211,34 @@ public class GcpAccountService {
                 billingAccountId = billingId;
             }
 
+            // 서비스 계정 ID 중복 체크
+            java.util.Optional<GcpAccount> existingAccount = gcpAccountRepository.findByServiceAccountId(request.getServiceAccountId());
+            if (existingAccount.isPresent()) {
+                GcpAccount account = existingAccount.get();
+                Long previousOwnerId = account.getOwner() != null ? account.getOwner().getId() : null;
+                if (previousOwnerId != null && !previousOwnerId.equals(memberId)) {
+                    log.info("Reassigning GCP account {} from member {} to {}", account.getId(), previousOwnerId, memberId);
+                }
+
+                account.setOwner(member);
+                account.setName(request.getName());
+                account.setProjectId(projectId);
+                account.setBillingAccountId(billingAccountId);
+                account.setBillingExportDatasetId(datasetIdStr);
+                account.setBillingExportLocation(datasetLocation);
+                account.setEncryptedServiceAccountKey(request.getServiceAccountKeyJson());
+
+                GcpAccount saved = gcpAccountRepository.save(account);
+
+                res.setOk(true);
+                res.setId(saved.getId());
+                res.setName(saved.getName());
+                res.setServiceAccountId(saved.getServiceAccountId());
+                res.setProjectId(saved.getProjectId());
+                res.setMessage("Integration updated");
+                return res;
+            }
+
             GcpAccount entity = new GcpAccount();
             entity.setName(request.getName());
             entity.setServiceAccountId(request.getServiceAccountId());
@@ -229,7 +247,7 @@ public class GcpAccountService {
             entity.setBillingExportDatasetId(datasetIdStr);
             entity.setBillingExportLocation(datasetLocation);
             entity.setEncryptedServiceAccountKey(request.getServiceAccountKeyJson());
-            entity.setWorkspace(workspace);
+            entity.setOwner(member);
 
             GcpAccount saved = gcpAccountRepository.save(entity);
 
@@ -252,19 +270,15 @@ public class GcpAccountService {
     }
 
     public List<GcpAccountResponse> listAccounts(Long memberId) {
-        Member member = getMemberOrThrow(memberId);
-        Workspace workspace = findPrimaryWorkspace(member);
-        if (workspace == null) {
-            return List.of();
-        }
-        return gcpAccountRepository.findByWorkspaceId(workspace.getId()).stream()
+        getMemberOrThrow(memberId);
+        return gcpAccountRepository.findByOwnerId(memberId).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
 
     @Transactional
     public void deleteAccount(Long id, Long memberId) {
-        GcpAccount account = gcpAccountRepository.findByIdAndWorkspaceOwnerId(id, memberId)
+        GcpAccount account = gcpAccountRepository.findByIdAndOwnerId(id, memberId)
                 .orElseThrow(() -> new IllegalArgumentException("GCP 계정을 찾을 수 없습니다."));
         
         // 계정에 연결된 모든 리소스를 먼저 삭제 (외래키 제약조건 해결)
@@ -301,30 +315,6 @@ public class GcpAccountService {
                 .orElseThrow(() -> new IllegalArgumentException("Member를 찾을 수 없습니다: " + memberId));
     }
 
-    private Workspace findPrimaryWorkspace(Member member) {
-        List<Workspace> workspaces = workspaceRepository.findByOwner(member);
-        if (workspaces.isEmpty()) {
-            return null;
-        }
-        return workspaces.get(0);
-    }
-
-    private Workspace getOrCreateWorkspace(Member member) {
-        Workspace existing = findPrimaryWorkspace(member);
-        if (existing != null) {
-            existing.addMember(member);
-            return existing;
-        }
-
-        Workspace workspace = Workspace.builder()
-                .name(member.getName() + "'s Workspace")
-                .description("Default workspace for " + member.getEmail())
-                .owner(member)
-                .build();
-
-        workspace.addMember(member);
-        return workspaceRepository.save(workspace);
-    }
 }
 
 

@@ -124,17 +124,17 @@ public class AIChatService {
                     String startDateStr = startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
                     String endDateStr = endDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
                     
-                    Set<Long> workspaceOwnerIds = new LinkedHashSet<>();
+                    Set<Long> ownerIds = new LinkedHashSet<>();
                     for (AwsAccount account : activeAccounts) {
-                        if (account.getWorkspace() == null || account.getWorkspace().getOwner() == null) {
-                            log.warn("AWS account {} has no workspace owner associated; skipping cost aggregation.", account.getId());
+                        if (account.getOwner() == null) {
+                            log.warn("AWS account {} has no owner associated; skipping cost aggregation.", account.getId());
                             continue;
                         }
-                        workspaceOwnerIds.add(account.getWorkspace().getOwner().getId());
+                        ownerIds.add(account.getOwner().getId());
                     }
 
                     List<AwsCostService.AccountCost> accountCosts = new ArrayList<>();
-                    for (Long ownerId : workspaceOwnerIds) {
+                    for (Long ownerId : ownerIds) {
                         try {
                             accountCosts.addAll(awsCostService.getAllAccountsCosts(ownerId, startDateStr, endDateStr));
                         } catch (Exception e) {

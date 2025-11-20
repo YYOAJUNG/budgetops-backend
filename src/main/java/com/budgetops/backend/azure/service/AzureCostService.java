@@ -79,7 +79,7 @@ public class AzureCostService {
 
     @Transactional(readOnly = true)
     public List<AccountCost> getAllAccountsCosts(Long memberId, String startDate, String endDate) {
-        return accountRepository.findByWorkspaceOwnerIdAndActiveTrue(memberId).stream()
+        return accountRepository.findByOwnerIdAndActiveTrue(memberId).stream()
                 .map(account -> {
                     try {
                         AzureAccessToken token = tokenManager.getToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
@@ -109,7 +109,7 @@ public class AzureCostService {
     }
 
     private AzureAccount getAccount(Long accountId, Long memberId) {
-        AzureAccount account = accountRepository.findByIdAndWorkspaceOwnerId(accountId, memberId)
+        AzureAccount account = accountRepository.findByIdAndOwnerId(accountId, memberId)
                 .orElseThrow(() -> new IllegalArgumentException("Azure 계정을 찾을 수 없습니다."));
 
         if (!Boolean.TRUE.equals(account.getActive())) {

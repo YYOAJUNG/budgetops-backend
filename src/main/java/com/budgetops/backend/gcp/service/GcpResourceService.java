@@ -52,7 +52,7 @@ public class GcpResourceService {
 
     @Transactional
     public GcpResourceListResponse listResources(Long accountId, Long memberId) {
-        GcpAccount account = accountRepository.findByIdAndWorkspaceOwnerId(accountId, memberId)
+        GcpAccount account = accountRepository.findByIdAndOwnerId(accountId, memberId)
                 .orElseThrow(() -> new IllegalArgumentException("GCP 계정을 찾을 수 없습니다: " + accountId));
 
         String serviceAccountKeyJson = account.getEncryptedServiceAccountKey();
@@ -123,7 +123,7 @@ public class GcpResourceService {
 
     @Transactional
     public List<GcpResourceListResponse> listAllAccountsResources(Long memberId) {
-        List<GcpAccount> accounts = accountRepository.findByWorkspaceOwnerId(memberId);
+        List<GcpAccount> accounts = accountRepository.findByOwnerId(memberId);
         List<GcpResourceListResponse> responses = new ArrayList<>();
         
         for (GcpAccount account : accounts) {
@@ -442,9 +442,7 @@ public class GcpResourceService {
             throw new IllegalStateException("리소스에 연결된 GCP 계정을 찾을 수 없습니다.");
         }
 
-        if (account.getWorkspace() == null ||
-                account.getWorkspace().getOwner() == null ||
-                !account.getWorkspace().getOwner().getId().equals(memberId)) {
+        if (account.getOwner() == null || !account.getOwner().getId().equals(memberId)) {
             throw new ResponseStatusException(NOT_FOUND, "GCP 리소스를 찾을 수 없습니다: " + resourceId);
         }
 
