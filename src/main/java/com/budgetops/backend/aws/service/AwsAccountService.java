@@ -3,6 +3,7 @@ package com.budgetops.backend.aws.service;
 import com.budgetops.backend.aws.dto.AwsAccountCreateRequest;
 import com.budgetops.backend.aws.entity.AwsAccount;
 import com.budgetops.backend.aws.repository.AwsAccountRepository;
+import com.budgetops.backend.aws.repository.AwsResourceRepository;
 import com.budgetops.backend.domain.user.entity.Member;
 import com.budgetops.backend.domain.user.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 public class AwsAccountService {
     private final AwsAccountRepository accountRepo;
     private final AwsCredentialValidator credentialValidator;
+    private final AwsResourceRepository resourceRepository;
     private final MemberRepository memberRepository;
 
     @Value("${app.aws.validate:true}")
@@ -114,14 +116,14 @@ public class AwsAccountService {
                     return new ResponseStatusException(NOT_FOUND, "계정을 찾을 수 없습니다.");
                 });
 
-        if (Boolean.TRUE.equals(account.getActive())) {
-            account.setActive(Boolean.FALSE);
-            accountRepo.save(account);
-            log.info("Successfully deactivated account with id: {}, accessKeyId: {}", 
-                    accountId, account.getAccessKeyId());
-        } else {
-            log.warn("Account with id: {} is already inactive", accountId);
+        var resources = resourceRepository.findByAwsAccountId(accountId);
+        if (!resources.isEmpty()) {
+            resourceRepository.deleteAll(resources);
+            log.info("Deleted {} AWS resources linked to account {}", resources.size(), accountId);
         }
+
+        accountRepo.delete(account);
+        log.info("Successfully deleted AWS account with id: {}, accessKeyId: {}", accountId, account.getAccessKeyId());
     }
 
     private Member getMemberOrThrow(Long memberId) {

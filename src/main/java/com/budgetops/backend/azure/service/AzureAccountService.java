@@ -99,10 +99,8 @@ public class AzureAccountService {
     public void deactivateAccount(Long accountId, Long memberId) {
         AzureAccount account = accountRepository.findByIdAndOwnerId(accountId, memberId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Azure 계정을 찾을 수 없습니다."));
-        if (Boolean.TRUE.equals(account.getActive())) {
-            account.setActive(Boolean.FALSE);
-            accountRepository.save(account);
-        }
+        accountRepository.delete(account);
+        log.info("Deleted Azure account id={} for member {}", accountId, memberId);
     }
 
     private Member getMemberOrThrow(Long memberId) {
