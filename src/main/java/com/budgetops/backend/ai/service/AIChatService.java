@@ -15,7 +15,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -118,7 +124,24 @@ public class AIChatService {
                     String startDateStr = startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
                     String endDateStr = endDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
                     
-                    List<AwsCostService.AccountCost> accountCosts = awsCostService.getAllAccountsCosts(startDateStr, endDateStr);
+                    Set<Long> workspaceOwnerIds = new LinkedHashSet<>();
+                    for (AwsAccount account : activeAccounts) {
+                        if (account.getWorkspace() == null || account.getWorkspace().getOwner() == null) {
+                            log.warn("AWS account {} has no workspace owner associated; skipping cost aggregation.", account.getId());
+                            continue;
+                        }
+                        workspaceOwnerIds.add(account.getWorkspace().getOwner().getId());
+                    }
+
+                    List<AwsCostService.AccountCost> accountCosts = new ArrayList<>();
+                    for (Long ownerId : workspaceOwnerIds) {
+                        try {
+                            accountCosts.addAll(awsCostService.getAllAccountsCosts(ownerId, startDateStr, endDateStr));
+                        } catch (Exception e) {
+                            log.warn("Failed to fetch costs for ownerId {}: {}", ownerId, e.getMessage());
+                        }
+                    }
+
                     double totalCost = accountCosts.stream().mapToDouble(AwsCostService.AccountCost::totalCost).sum();
                     
                     prompt.append("📊 최근 30일 비용 요약:\n");
