@@ -31,9 +31,10 @@ public class BillingService {
                 .member(member)
                 .currentPlan(BillingPlan.FREE)
                 .currentPrice(0)
+                .currentTokens(100)
                 .build();
 
-        billing.setNextBillingDateFromNow();
+        billing.setNextBillingDate(null);
 
         log.info("빌링 초기화: memberId={}, plan=FREE", member.getId());
         return billingRepository.save(billing);
