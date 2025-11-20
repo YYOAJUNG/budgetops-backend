@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -24,7 +25,7 @@ public class AzureAccountController {
 
     @PostMapping
     public ResponseEntity<?> register(@Valid @RequestBody AzureAccountCreateRequest request) {
-        AzureAccount saved = accountService.createWithVerify(request);
+        AzureAccount saved = accountService.createWithVerify(request, getCurrentMemberId());
         return ResponseEntity.ok(new Object() {
             public final Long id = saved.getId();
             public final String name = saved.getName();
@@ -38,20 +39,20 @@ public class AzureAccountController {
 
     @GetMapping
     public ResponseEntity<List<AzureAccountResponse>> getActiveAccounts() {
-        return ResponseEntity.ok(accountService.getActiveAccounts().stream()
+        return ResponseEntity.ok(accountService.getActiveAccounts(getCurrentMemberId()).stream()
                 .map(this::toResponse)
                 .toList());
     }
 
     @GetMapping("/{accountId}/info")
     public ResponseEntity<AzureAccountResponse> getAccountInfo(@PathVariable Long accountId) {
-        AzureAccount account = accountService.getAccountInfo(accountId);
+        AzureAccount account = accountService.getAccountInfo(accountId, getCurrentMemberId());
         return ResponseEntity.ok(toResponse(account));
     }
 
     @DeleteMapping("/{accountId}")
     public ResponseEntity<Void> deactivate(@PathVariable Long accountId) {
-        accountService.deactivateAccount(accountId);
+        accountService.deactivateAccount(accountId, getCurrentMemberId());
         return ResponseEntity.noContent().build();
     }
 
@@ -70,6 +71,7 @@ public class AzureAccountController {
 
         List<AzureCostService.DailyCost> costs = costService.getCosts(
                 accountId,
+                getCurrentMemberId(),
                 startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE),
                 endDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
         );
@@ -82,7 +84,7 @@ public class AzureAccountController {
             @RequestParam int year,
             @RequestParam int month
     ) {
-        return ResponseEntity.ok(costService.getMonthlyCost(accountId, year, month));
+        return ResponseEntity.ok(costService.getMonthlyCost(accountId, getCurrentMemberId(), year, month));
     }
 
     @GetMapping("/costs")
@@ -98,6 +100,7 @@ public class AzureAccountController {
         }
 
         List<AzureCostService.AccountCost> costs = costService.getAllAccountsCosts(
+                getCurrentMemberId(),
                 startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE),
                 endDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
         );
@@ -114,6 +117,12 @@ public class AzureAccountController {
                 .clientSecretLast4("****" + (account.getClientSecretLast4() != null ? account.getClientSecretLast4() : ""))
                 .active(Boolean.TRUE.equals(account.getActive()))
                 .build();
+    }
+
+    private Long getCurrentMemberId() {
+        return (Long) SecurityContextHolder.getContext()
+                .getAuthentication()
+                .getPrincipal();
     }
 }
 

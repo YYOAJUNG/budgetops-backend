@@ -45,8 +45,8 @@ public class AwsUsageService {
      * @param endDate 종료 날짜
      * @return 서비스별 사용량 정보
      */
-    public List<ServiceUsage> getEc2Usage(Long accountId, String startDate, String endDate) {
-        AwsAccount account = accountRepository.findById(accountId)
+    public List<ServiceUsage> getEc2Usage(Long accountId, Long memberId, String startDate, String endDate) {
+        AwsAccount account = accountRepository.findByIdAndOwnerId(accountId, memberId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
         
         if (!Boolean.TRUE.equals(account.getActive())) {
@@ -65,7 +65,6 @@ public class AwsUsageService {
             
             LocalDate start = LocalDate.parse(startDate);
             LocalDate end = LocalDate.parse(endDate);
-            long daysBetween = ChronoUnit.DAYS.between(start, end);
             
             // 모든 인스턴스 수집
             List<Instance> allInstances = new ArrayList<>();
@@ -98,7 +97,7 @@ public class AwsUsageService {
                         if (instance.state().name() == InstanceStateName.RUNNING) {
                             long hours = ChronoUnit.HOURS.between(actualStart, actualEnd);
                             if (hours > 0) {
-                                instanceTypeHours.merge(instanceType, (double) hours, Double::sum);
+                                instanceTypeHours.merge(instanceType, (double) hours, (current, add) -> current + add);
                             }
                         }
                     }
@@ -137,8 +136,8 @@ public class AwsUsageService {
      * @param endDate 종료 날짜
      * @return 사용량 메트릭
      */
-    public UsageMetrics getUsageMetrics(Long accountId, String service, String startDate, String endDate) {
-        AwsAccount account = accountRepository.findById(accountId)
+    public UsageMetrics getUsageMetrics(Long accountId, Long memberId, String service, String startDate, String endDate) {
+        AwsAccount account = accountRepository.findByIdAndOwnerId(accountId, memberId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
         
         if (!Boolean.TRUE.equals(account.getActive())) {

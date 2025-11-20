@@ -1,5 +1,6 @@
 package com.budgetops.backend.domain.user.service;
 
+import com.budgetops.backend.billing.service.BillingService;
 import com.budgetops.backend.domain.user.entity.Member;
 import com.budgetops.backend.domain.user.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class MemberService {
 
     private final MemberRepository memberRepository;
+    private final BillingService billingService;
 
     /**
      * OAuth 로그인 시 Member upsert
@@ -35,7 +37,8 @@ public class MemberService {
                             .name(name)
                             .build();
                     Member savedMember = memberRepository.save(newMember);
-                    log.info("New member created: email={}, id={}", email, savedMember.getId());
+                    billingService.initializeBilling(savedMember);
+                    log.info("New member created with default billing: email={}, id={}", email, savedMember.getId());
                     return savedMember;
                 });
     }

@@ -1,6 +1,7 @@
 package com.budgetops.backend.azure.entity;
 
 import com.budgetops.backend.aws.support.CryptoStringConverter;
+import com.budgetops.backend.domain.user.entity.Member;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -33,6 +34,18 @@ public class AzureAccount {
     private String clientSecretEnc;
 
     private String clientSecretLast4;
-    private Boolean active = Boolean.TRUE;
-}
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "member_id", nullable = false)
+    private Member owner;
+
+    private Boolean active = Boolean.TRUE;
+
+    @PrePersist
+    @PreUpdate
+    private void ensureOwnerAssigned() {
+        if (owner == null) {
+            throw new IllegalStateException("Owner must be assigned to Azure account before persisting.");
+        }
+    }
+}

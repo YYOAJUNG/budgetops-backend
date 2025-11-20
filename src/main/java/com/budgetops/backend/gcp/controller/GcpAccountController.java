@@ -1,6 +1,7 @@
 package com.budgetops.backend.gcp.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -32,7 +33,7 @@ public class GcpAccountController {
 
     @GetMapping
     public ResponseEntity<List<GcpAccountResponse>> listAccounts() {
-        return ResponseEntity.ok(accountService.listAccounts());
+        return ResponseEntity.ok(accountService.listAccounts(getCurrentMemberId()));
     }
 
     @PostMapping("/test")
@@ -47,18 +48,24 @@ public class GcpAccountController {
 
     @PostMapping
     public ResponseEntity<SaveIntegrationResponse> saveIntegration(@RequestBody SaveIntegrationRequest request) {
-        SaveIntegrationResponse result = accountService.saveIntegration(request);
+        SaveIntegrationResponse result = accountService.saveIntegration(request, getCurrentMemberId());
         return ResponseEntity.ok(result);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteAccount(@PathVariable Long id) {
         try {
-            accountService.deleteAccount(id);
+            accountService.deleteAccount(id, getCurrentMemberId());
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
         }
+    }
+
+    private Long getCurrentMemberId() {
+        return (Long) SecurityContextHolder.getContext()
+                .getAuthentication()
+                .getPrincipal();
     }
 }
 

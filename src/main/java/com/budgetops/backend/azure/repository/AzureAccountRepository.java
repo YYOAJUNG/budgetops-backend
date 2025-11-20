@@ -9,5 +9,7 @@ import java.util.Optional;
 public interface AzureAccountRepository extends JpaRepository<AzureAccount, Long> {
     Optional<AzureAccount> findByClientIdAndSubscriptionId(String clientId, String subscriptionId);
     List<AzureAccount> findByActiveTrue();
+    List<AzureAccount> findByOwnerIdAndActiveTrue(Long ownerId);
+    Optional<AzureAccount> findByIdAndOwnerId(Long id, Long ownerId);
 }
 

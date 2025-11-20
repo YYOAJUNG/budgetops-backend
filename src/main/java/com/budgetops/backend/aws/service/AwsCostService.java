@@ -38,8 +38,8 @@ public class AwsCostService {
      * @param endDate 종료 날짜 (YYYY-MM-DD 형식)
      * @return 일별 비용 목록
      */
-    public List<DailyCost> getCosts(Long accountId, String startDate, String endDate) {
-        AwsAccount account = accountRepository.findById(accountId)
+    public List<DailyCost> getCosts(Long accountId, Long memberId, String startDate, String endDate) {
+        AwsAccount account = accountRepository.findByIdAndOwnerId(accountId, memberId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
         
         if (!Boolean.TRUE.equals(account.getActive())) {
@@ -72,7 +72,7 @@ public class AwsCostService {
             }
             
             // 사용량 데이터 수집 (프리티어 정보 포함)
-            List<AwsUsageService.ServiceUsage> usageData = usageService.getEc2Usage(accountId, startDate, endDate);
+            List<AwsUsageService.ServiceUsage> usageData = usageService.getEc2Usage(accountId, memberId, startDate, endDate);
             Map<String, AwsUsageService.ServiceUsage> usageMap = new HashMap<>();
             for (AwsUsageService.ServiceUsage usage : usageData) {
                 usageMap.put(usage.service(), usage);
@@ -199,14 +199,14 @@ public class AwsCostService {
      * @param month 월 (1-12)
      * @return 월별 총 비용
      */
-    public MonthlyCost getMonthlyCost(Long accountId, int year, int month) {
+    public MonthlyCost getMonthlyCost(Long accountId, Long memberId, int year, int month) {
         LocalDate startDate = LocalDate.of(year, month, 1);
         LocalDate endDate = startDate.plusMonths(1);
         
         String startDateStr = startDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
         String endDateStr = endDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
         
-        List<DailyCost> dailyCosts = getCosts(accountId, startDateStr, endDateStr);
+        List<DailyCost> dailyCosts = getCosts(accountId, memberId, startDateStr, endDateStr);
         
         double totalCost = dailyCosts.stream()
                 .mapToDouble(DailyCost::totalCost)
@@ -222,8 +222,8 @@ public class AwsCostService {
      * @param endDate 종료 날짜
      * @return 계정별 비용 목록
      */
-    public List<AccountCost> getAllAccountsCosts(String startDate, String endDate) {
-        List<AwsAccount> activeAccounts = accountRepository.findByActiveTrue();
+    public List<AccountCost> getAllAccountsCosts(Long memberId, String startDate, String endDate) {
+        List<AwsAccount> activeAccounts = accountRepository.findByOwnerIdAndActiveTrue(memberId);
         log.info("Fetching costs for {} active account(s) from {} to {}", 
                 activeAccounts.size(), startDate, endDate);
         
@@ -237,7 +237,7 @@ public class AwsCostService {
         for (AwsAccount account : activeAccounts) {
             try {
                 log.debug("Fetching costs for account {} ({})", account.getId(), account.getName());
-                List<DailyCost> dailyCosts = getCosts(account.getId(), startDate, endDate);
+                List<DailyCost> dailyCosts = getCosts(account.getId(), memberId, startDate, endDate);
                 double totalCost = dailyCosts.stream()
                         .mapToDouble(DailyCost::totalCost)
                         .sum();

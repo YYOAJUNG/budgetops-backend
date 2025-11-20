@@ -51,8 +51,8 @@ public class GcpResourceService {
     private final GcpAccountRepository accountRepository;
 
     @Transactional
-    public GcpResourceListResponse listResources(Long accountId) {
-        GcpAccount account = accountRepository.findById(accountId)
+    public GcpResourceListResponse listResources(Long accountId, Long memberId) {
+        GcpAccount account = accountRepository.findByIdAndOwnerId(accountId, memberId)
                 .orElseThrow(() -> new IllegalArgumentException("GCP 계정을 찾을 수 없습니다: " + accountId));
 
         String serviceAccountKeyJson = account.getEncryptedServiceAccountKey();
@@ -122,14 +122,14 @@ public class GcpResourceService {
     }
 
     @Transactional
-    public List<GcpResourceListResponse> listAllAccountsResources() {
-        List<GcpAccount> accounts = accountRepository.findAll();
+    public List<GcpResourceListResponse> listAllAccountsResources(Long memberId) {
+        List<GcpAccount> accounts = accountRepository.findByOwnerId(memberId);
         List<GcpResourceListResponse> responses = new ArrayList<>();
         
         for (GcpAccount account : accounts) {
             try {
                 // 각 계정에 대해 GCP API를 호출하여 리소스 조회
-                GcpResourceListResponse response = listResources(account.getId());
+                GcpResourceListResponse response = listResources(account.getId(), memberId);
                 responses.add(response);
             } catch (Exception e) {
                 // 특정 계정의 리소스 조회 실패 시에도 다른 계정은 계속 조회
@@ -427,7 +427,7 @@ public class GcpResourceService {
      * @param hours 조회할 시간 범위 (기본값: 1시간)
      * @return 메트릭 데이터 (CPU, NetworkIn, NetworkOut, MemoryUtilization)
      */
-    public GcpResourceMetricsResponse getResourceMetrics(String resourceId, Integer hours) {
+    public GcpResourceMetricsResponse getResourceMetrics(String resourceId, Long memberId, Integer hours) {
         // 리소스 조회
         GcpResource resource = resourceRepository.findByResourceId(resourceId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "GCP 리소스를 찾을 수 없습니다: " + resourceId));
@@ -440,6 +440,10 @@ public class GcpResourceService {
         GcpAccount account = resource.getGcpAccount();
         if (account == null) {
             throw new IllegalStateException("리소스에 연결된 GCP 계정을 찾을 수 없습니다.");
+        }
+
+        if (account.getOwner() == null || !account.getOwner().getId().equals(memberId)) {
+            throw new ResponseStatusException(NOT_FOUND, "GCP 리소스를 찾을 수 없습니다: " + resourceId);
         }
 
         String serviceAccountKeyJson = account.getEncryptedServiceAccountKey();
