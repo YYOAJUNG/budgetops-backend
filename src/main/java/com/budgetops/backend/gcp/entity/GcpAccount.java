@@ -1,14 +1,8 @@
 package com.budgetops.backend.gcp.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import jakarta.persistence.Convert;
 import com.budgetops.backend.aws.support.CryptoStringConverter;
+import com.budgetops.backend.billing.entity.Workspace;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.data.annotation.CreatedDate;
@@ -52,9 +46,21 @@ public class GcpAccount {
     @Column(columnDefinition = "TEXT")
     private String encryptedServiceAccountKey;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "workspace_id", nullable = false)
+    private Workspace workspace;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
+
+    @PrePersist
+    @PreUpdate
+    private void ensureWorkspaceAssigned() {
+        if (workspace == null) {
+            throw new IllegalStateException("Workspace must be assigned to GCP account before persisting.");
+        }
+    }
 }
 
 

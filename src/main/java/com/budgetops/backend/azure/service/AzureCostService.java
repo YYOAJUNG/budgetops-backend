@@ -31,8 +31,8 @@ public class AzureCostService {
     private final AzureCostRateLimiter rateLimiter;
 
     @Transactional(readOnly = true)
-    public List<DailyCost> getCosts(Long accountId, String startDate, String endDate) {
-        AzureAccount account = getAccount(accountId);
+    public List<DailyCost> getCosts(Long accountId, Long memberId, String startDate, String endDate) {
+        AzureAccount account = getAccount(accountId, memberId);
         AzureAccessToken token = tokenManager.getToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
         rateLimiter.awaitAllowance(account.getSubscriptionId());
         try {
@@ -45,8 +45,8 @@ public class AzureCostService {
     }
 
     @Transactional(readOnly = true)
-    public MonthlyCost getMonthlyCost(Long accountId, int year, int month) {
-        AzureAccount account = getAccount(accountId);
+    public MonthlyCost getMonthlyCost(Long accountId, Long memberId, int year, int month) {
+        AzureAccount account = getAccount(accountId, memberId);
         YearMonth ym = YearMonth.of(year, month);
         LocalDate from = ym.atDay(1);
         LocalDate to = ym.atEndOfMonth();
@@ -78,8 +78,8 @@ public class AzureCostService {
     }
 
     @Transactional(readOnly = true)
-    public List<AccountCost> getAllAccountsCosts(String startDate, String endDate) {
-        return accountRepository.findByActiveTrue().stream()
+    public List<AccountCost> getAllAccountsCosts(Long memberId, String startDate, String endDate) {
+        return accountRepository.findByWorkspaceOwnerIdAndActiveTrue(memberId).stream()
                 .map(account -> {
                     try {
                         AzureAccessToken token = tokenManager.getToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
@@ -108,8 +108,8 @@ public class AzureCostService {
                 .collect(Collectors.toList());
     }
 
-    private AzureAccount getAccount(Long accountId) {
-        AzureAccount account = accountRepository.findById(accountId)
+    private AzureAccount getAccount(Long accountId, Long memberId) {
+        AzureAccount account = accountRepository.findByIdAndWorkspaceOwnerId(accountId, memberId)
                 .orElseThrow(() -> new IllegalArgumentException("Azure 계정을 찾을 수 없습니다."));
 
         if (!Boolean.TRUE.equals(account.getActive())) {

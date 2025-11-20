@@ -1,14 +1,15 @@
 package com.budgetops.backend.aws.controller;
 
 import com.budgetops.backend.aws.dto.AwsAccountCreateRequest;
-import com.budgetops.backend.aws.entity.AwsAccount;
 import com.budgetops.backend.aws.dto.AwsAccountResponse;
+import com.budgetops.backend.aws.entity.AwsAccount;
 import com.budgetops.backend.aws.service.AwsAccountService;
 import com.budgetops.backend.aws.service.AwsCostService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -24,7 +25,7 @@ public class AwsAccountController {
     // STS GetCallerIdentity로 검증 후 저장
     @PostMapping
     public ResponseEntity<?> register(@Valid @RequestBody AwsAccountCreateRequest req) {
-        AwsAccount saved = service.createWithVerify(req);
+        AwsAccount saved = service.createWithVerify(req, getCurrentMemberId());
         // secret은 응답에서 제외: 최소 정보만 반환
         return ResponseEntity.ok(new Object() {
             public final Long id = saved.getId();
@@ -39,7 +40,7 @@ public class AwsAccountController {
     // 활성 계정 목록
     @GetMapping
     public ResponseEntity<?> getActiveAccounts() {
-        return ResponseEntity.ok(service.getActiveAccounts().stream()
+        return ResponseEntity.ok(service.getActiveAccounts(getCurrentMemberId()).stream()
                 .map(this::toResp)
                 .toList());
     }
@@ -47,14 +48,14 @@ public class AwsAccountController {
     // 계정 정보(id 기준)
     @GetMapping("/{accountId}/info")
     public ResponseEntity<AwsAccountResponse> getAccountInfo(@PathVariable Long accountId) {
-        AwsAccount a = service.getAccountInfo(accountId);
+        AwsAccount a = service.getAccountInfo(accountId, getCurrentMemberId());
         return ResponseEntity.ok(toResp(a));
     }
 
     // 계정 비활성(삭제 대용): 참조 무결성 보존을 위해 active=false 처리
     @DeleteMapping("/{accountId}")
     public ResponseEntity<Void> deleteAccount(@PathVariable Long accountId) {
-        service.deactivateAccount(accountId);
+        service.deactivateAccount(accountId, getCurrentMemberId());
         return ResponseEntity.noContent().build();
     }
 
@@ -75,6 +76,7 @@ public class AwsAccountController {
         
         List<AwsCostService.DailyCost> costs = costService.getCosts(
                 accountId,
+                getCurrentMemberId(),
                 startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE),
                 endDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
         );
@@ -88,7 +90,7 @@ public class AwsAccountController {
             @RequestParam int year,
             @RequestParam int month
     ) {
-        AwsCostService.MonthlyCost monthlyCost = costService.getMonthlyCost(accountId, year, month);
+        AwsCostService.MonthlyCost monthlyCost = costService.getMonthlyCost(accountId, getCurrentMemberId(), year, month);
         return ResponseEntity.ok(monthlyCost);
     }
 
@@ -107,6 +109,7 @@ public class AwsAccountController {
         }
         
         List<AwsCostService.AccountCost> accountCosts = costService.getAllAccountsCosts(
+                getCurrentMemberId(),
                 startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE),
                 endDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
         );
@@ -122,6 +125,12 @@ public class AwsAccountController {
                 .secretKeyLast4("****" + a.getSecretKeyLast4())
                 .active(Boolean.TRUE.equals(a.getActive()))
                 .build();
+    }
+
+    private Long getCurrentMemberId() {
+        return (Long) SecurityContextHolder.getContext()
+                .getAuthentication()
+                .getPrincipal();
     }
 }
 

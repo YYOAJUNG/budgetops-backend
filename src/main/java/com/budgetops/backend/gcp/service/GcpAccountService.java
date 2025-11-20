@@ -1,6 +1,10 @@
 package com.budgetops.backend.gcp.service;
 
 import com.budgetops.backend.gcp.dto.*;
+import com.budgetops.backend.billing.entity.Workspace;
+import com.budgetops.backend.billing.repository.WorkspaceRepository;
+import com.budgetops.backend.domain.user.entity.Member;
+import com.budgetops.backend.domain.user.repository.MemberRepository;
 import com.google.auth.oauth2.ServiceAccountCredentials;
 import com.budgetops.backend.gcp.entity.GcpAccount;
 import com.budgetops.backend.gcp.repository.GcpAccountRepository;
@@ -10,6 +14,7 @@ import com.google.cloud.bigquery.BigQueryOptions;
 import com.google.cloud.bigquery.Dataset;
 import com.google.cloud.bigquery.DatasetId;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,22 +23,15 @@ import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 
 @Service
+@RequiredArgsConstructor
 public class GcpAccountService {
 
     private final GcpServiceAccountVerifier serviceAccountVerifier;
     private final GcpBillingAccountVerifier billingVerifier;
     private final GcpAccountRepository gcpAccountRepository;
     private final GcpResourceRepository gcpResourceRepository;
-
-    public GcpAccountService(GcpServiceAccountVerifier serviceAccountVerifier,
-                             GcpBillingAccountVerifier billingVerifier,
-                             GcpAccountRepository gcpAccountRepository,
-                             GcpResourceRepository gcpResourceRepository) {
-        this.serviceAccountVerifier = serviceAccountVerifier;
-        this.billingVerifier = billingVerifier;
-        this.gcpAccountRepository = gcpAccountRepository;
-        this.gcpResourceRepository = gcpResourceRepository;
-    }
+    private final WorkspaceRepository workspaceRepository;
+    private final MemberRepository memberRepository;
 
     public ServiceAccountTestResponse testServiceAccount(ServiceAccountTestRequest request) {
         if (request.getServiceAccountId() == null || request.getServiceAccountId().isBlank()) {
@@ -163,7 +161,7 @@ public class GcpAccountService {
         return response;
     }
 
-    public SaveIntegrationResponse saveIntegration(SaveIntegrationRequest request) {
+    public SaveIntegrationResponse saveIntegration(SaveIntegrationRequest request, Long memberId) {
         SaveIntegrationResponse res = new SaveIntegrationResponse();
         
         if (request.getServiceAccountId() == null || request.getServiceAccountId().isBlank()) {
@@ -177,6 +175,8 @@ public class GcpAccountService {
             return res;
         }
         try {
+            Member member = getMemberOrThrow(memberId);
+            Workspace workspace = getOrCreateWorkspace(member);
             ServiceAccountCredentials credentials = GcpCredentialParser.parse(request.getServiceAccountKeyJson());
             String projectId = credentials.getProjectId();
 
@@ -229,6 +229,7 @@ public class GcpAccountService {
             entity.setBillingExportDatasetId(datasetIdStr);
             entity.setBillingExportLocation(datasetLocation);
             entity.setEncryptedServiceAccountKey(request.getServiceAccountKeyJson());
+            entity.setWorkspace(workspace);
 
             GcpAccount saved = gcpAccountRepository.save(entity);
 
@@ -250,15 +251,20 @@ public class GcpAccountService {
         }
     }
 
-    public List<GcpAccountResponse> listAccounts() {
-        return gcpAccountRepository.findAll().stream()
+    public List<GcpAccountResponse> listAccounts(Long memberId) {
+        Member member = getMemberOrThrow(memberId);
+        Workspace workspace = findPrimaryWorkspace(member);
+        if (workspace == null) {
+            return List.of();
+        }
+        return gcpAccountRepository.findByWorkspaceId(workspace.getId()).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
 
     @Transactional
-    public void deleteAccount(Long id) {
-        GcpAccount account = gcpAccountRepository.findById(id)
+    public void deleteAccount(Long id, Long memberId) {
+        GcpAccount account = gcpAccountRepository.findByIdAndWorkspaceOwnerId(id, memberId)
                 .orElseThrow(() -> new IllegalArgumentException("GCP 계정을 찾을 수 없습니다."));
         
         // 계정에 연결된 모든 리소스를 먼저 삭제 (외래키 제약조건 해결)
@@ -288,6 +294,36 @@ public class GcpAccountService {
         }
 
         return response;
+    }
+
+    private Member getMemberOrThrow(Long memberId) {
+        return memberRepository.findById(memberId)
+                .orElseThrow(() -> new IllegalArgumentException("Member를 찾을 수 없습니다: " + memberId));
+    }
+
+    private Workspace findPrimaryWorkspace(Member member) {
+        List<Workspace> workspaces = workspaceRepository.findByOwner(member);
+        if (workspaces.isEmpty()) {
+            return null;
+        }
+        return workspaces.get(0);
+    }
+
+    private Workspace getOrCreateWorkspace(Member member) {
+        Workspace existing = findPrimaryWorkspace(member);
+        if (existing != null) {
+            existing.addMember(member);
+            return existing;
+        }
+
+        Workspace workspace = Workspace.builder()
+                .name(member.getName() + "'s Workspace")
+                .description("Default workspace for " + member.getEmail())
+                .owner(member)
+                .build();
+
+        workspace.addMember(member);
+        return workspaceRepository.save(workspace);
     }
 }
 

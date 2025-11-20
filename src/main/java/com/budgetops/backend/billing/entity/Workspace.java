@@ -1,6 +1,9 @@
 package com.budgetops.backend.billing.entity;
 
+import com.budgetops.backend.aws.entity.AwsAccount;
+import com.budgetops.backend.azure.entity.AzureAccount;
 import com.budgetops.backend.domain.user.entity.Member;
+import com.budgetops.backend.gcp.entity.GcpAccount;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -42,6 +45,18 @@ public class Workspace {
     @Builder.Default
     private List<Member> members = new ArrayList<>();
 
+    @OneToMany(mappedBy = "workspace", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<AwsAccount> awsAccounts = new ArrayList<>();
+
+    @OneToMany(mappedBy = "workspace", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<AzureAccount> azureAccounts = new ArrayList<>();
+
+    @OneToMany(mappedBy = "workspace", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<GcpAccount> gcpAccounts = new ArrayList<>();
+
     // Payment와 Billing은 Member(사용자) 단위로 관리됩니다.
     // Workspace가 아닌 Member와 OneToOne 관계를 맺습니다.
 
@@ -64,18 +79,35 @@ public class Workspace {
      * 멤버 추가
      */
     public void addMember(Member member) {
+        if (member == null) {
+            return;
+        }
         if (members == null) {
             members = new ArrayList<>();
         }
-        members.add(member);
+        if (!members.contains(member)) {
+            members.add(member);
+        }
+        if (member.getWorkspaces() == null) {
+            member.setWorkspaces(new ArrayList<>());
+        }
+        if (!member.getWorkspaces().contains(this)) {
+            member.getWorkspaces().add(this);
+        }
     }
 
     /**
      * 멤버 제거
      */
     public void removeMember(Member member) {
+        if (member == null) {
+            return;
+        }
         if (members != null) {
             members.remove(member);
+        }
+        if (member.getWorkspaces() != null) {
+            member.getWorkspaces().remove(this);
         }
     }
 }
