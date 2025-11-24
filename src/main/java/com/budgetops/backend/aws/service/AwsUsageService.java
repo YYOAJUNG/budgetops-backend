@@ -258,6 +258,7 @@ public class AwsUsageService {
             case "AMAZON ELASTIC COMPUTE CLOUD - COMPUTE" -> "EC2";
             case "EC2 - OTHER" -> "EC2_OTHER";
             case "AMAZON RELATIONAL DATABASE SERVICE" -> "RDS";
+            case "AMAZON SIMPLE STORAGE SERVICE" -> "S3";
             case "AMAZON VIRTUAL PRIVATE CLOUD" -> "VPC";
             case "AWS COST EXPLORER" -> "COST_EXPLORER";
             case "OTHERS" -> "OTHERS";
