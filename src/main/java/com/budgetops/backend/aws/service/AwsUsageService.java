@@ -136,8 +136,8 @@ public class AwsUsageService {
      * @param endDate   종료 날짜
      * @return 사용량 메트릭
      */
-    public UsageMetrics getUsageMetrics(Long accountId, Long memberId, String service, String startDate, String endDate) {
-        AwsAccount account = accountRepository.findByIdAndOwnerId(accountId, memberId)
+    public UsageMetrics getUsageMetrics(Long accountId, String service, String startDate, String endDate) {
+        AwsAccount account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
         
         if (!Boolean.TRUE.equals(account.getActive())) {
