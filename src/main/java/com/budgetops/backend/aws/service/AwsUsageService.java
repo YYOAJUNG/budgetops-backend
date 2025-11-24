@@ -130,11 +130,11 @@ public class AwsUsageService {
     
     /**
      * CloudWatch를 사용하여 실제 사용량 메트릭 수집
-     * 
+     *
      * @param accountId AWS 계정 ID
-     * @param service 서비스명 (EC2, S3, RDS 등)
+     * @param service   서비스명 (EC2, S3, RDS 등)
      * @param startDate 시작 날짜
-     * @param endDate 종료 날짜
+     * @param endDate   종료 날짜
      * @return 사용량 메트릭
      */
     public UsageMetrics getUsageMetrics(Long accountId, String service, String startDate, String endDate) {
@@ -146,41 +146,119 @@ public class AwsUsageService {
         }
         
         String region = account.getDefaultRegion() != null ? account.getDefaultRegion() : "us-east-1";
-        
+        String normalizedService = service != null ? service.toUpperCase() : "";
+
         try (CloudWatchClient cloudWatchClient = createCloudWatchClient(account, region)) {
             Instant start = LocalDate.parse(startDate).atStartOfDay(ZoneId.systemDefault()).toInstant();
             Instant end = LocalDate.parse(endDate).atStartOfDay(ZoneId.systemDefault()).toInstant();
             
             // 서비스별 메트릭 수집
             Map<String, Double> metrics = new HashMap<>();
-            
-            if ("EC2".equalsIgnoreCase(service)) {
-                // EC2 인스턴스 실행 시간 집계
-                GetMetricStatisticsRequest request = GetMetricStatisticsRequest.builder()
-                        .namespace("AWS/EC2")
-                        .metricName("CPUUtilization")
-                        .startTime(start)
-                        .endTime(end)
-                        .period(3600) // 1시간 단위
-                        .statistics(Statistic.SAMPLE_COUNT)
-                        .build();
-                
-                GetMetricStatisticsResponse response = cloudWatchClient.getMetricStatistics(request);
-                
-                // 메트릭 데이터 처리
-                if (response.datapoints() != null && !response.datapoints().isEmpty()) {
-                    double totalSamples = response.datapoints().stream()
-                            .mapToDouble(Datapoint::sampleCount)
-                            .sum();
-                    metrics.put("instanceHours", totalSamples);
+
+            switch (normalizedService) {
+                case "EC2" -> {
+                    // EC2 인스턴스 실행 시간 집계 (기존 로직 유지)
+                    GetMetricStatisticsRequest request = GetMetricStatisticsRequest.builder()
+                            .namespace("AWS/EC2")
+                            .metricName("CPUUtilization")
+                            .startTime(start)
+                            .endTime(end)
+                            .period(3600) // 1시간 단위
+                            .statistics(Statistic.SAMPLE_COUNT)
+                            .build();
+
+                    GetMetricStatisticsResponse response = cloudWatchClient.getMetricStatistics(request);
+
+                    if (response.datapoints() != null && !response.datapoints().isEmpty()) {
+                        double totalSamples = response.datapoints().stream()
+                                .mapToDouble(Datapoint::sampleCount)
+                                .sum();
+                        metrics.put("instanceHours", totalSamples);
+                    }
+                }
+                case "S3" -> {
+                    // S3 버킷 기준 사용량 집계 (BucketSizeBytes, NumberOfObjects)
+                    // CloudWatch 메트릭을 버킷 단위로 모두 합산
+                    double totalBucketSizeBytes = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/S3",
+                            "BucketSizeBytes",
+                            start,
+                            end
+                    );
+                    double totalObjectCount = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/S3",
+                            "NumberOfObjects",
+                            start,
+                            end
+                    );
+
+                    // Byte → GB 변환
+                    double totalBucketSizeGb = totalBucketSizeBytes / (1024.0 * 1024.0 * 1024.0);
+
+                    metrics.put("bucketSizeGb", totalBucketSizeGb);
+                    metrics.put("objectCount", totalObjectCount);
+                }
+                default -> {
+                    // 아직 지원하지 않는 서비스는 빈 메트릭 반환
+                    log.warn("UsageMetrics requested for unsupported service: {}", service);
                 }
             }
-            
+
             return new UsageMetrics(service, metrics);
             
         } catch (Exception e) {
             log.error("Failed to fetch usage metrics for service {}: {}", service, e.getMessage(), e);
             return new UsageMetrics(service, new HashMap<>());
+        }
+    }
+
+    /**
+     * CloudWatch의 ListMetrics + GetMetricStatistics를 사용해
+     * 특정 네임스페이스/메트릭을 모든 리소스 차원에 대해 합산
+     */
+    private double sumMetricAcrossDimensions(CloudWatchClient cloudWatchClient,
+                                             String namespace,
+                                             String metricName,
+                                             Instant start,
+                                             Instant end) {
+        try {
+            ListMetricsRequest listReq = ListMetricsRequest.builder()
+                    .namespace(namespace)
+                    .metricName(metricName)
+                    .build();
+
+            ListMetricsResponse listRes = cloudWatchClient.listMetrics(listReq);
+            if (listRes.metrics() == null || listRes.metrics().isEmpty()) {
+                return 0.0;
+            }
+
+            double total = 0.0;
+
+            for (Metric metric : listRes.metrics()) {
+                GetMetricStatisticsRequest statsReq = GetMetricStatisticsRequest.builder()
+                        .namespace(namespace)
+                        .metricName(metricName)
+                        .dimensions(metric.dimensions())
+                        .startTime(start)
+                        .endTime(end)
+                        .period(86400) // 1일 단위
+                        .statistics(Statistic.SUM)
+                        .build();
+
+                GetMetricStatisticsResponse statsRes = cloudWatchClient.getMetricStatistics(statsReq);
+                if (statsRes.datapoints() != null && !statsRes.datapoints().isEmpty()) {
+                    total += statsRes.datapoints().stream()
+                            .mapToDouble(Datapoint::sum)
+                            .sum();
+                }
+            }
+
+            return total;
+        } catch (Exception e) {
+            log.warn("Failed to sum metric {} in namespace {}: {}", metricName, namespace, e.getMessage());
+            return 0.0;
         }
     }
     
