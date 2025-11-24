@@ -27,15 +27,15 @@ public class GcpAlertService {
     private final GcpRuleLoader ruleLoader;
     
     /**
-     * 모든 활성 GCP 계정의 리소스에 대해 임계치 확인 및 알림 발송
+     * 모든 GCP 계정의 리소스에 대해 임계치 확인 및 알림 발송
      */
     public List<GcpAlert> checkAllAccounts() {
-        List<GcpAccount> activeAccounts = accountRepository.findByActiveTrue();
-        log.info("Checking thresholds for {} active GCP account(s)", activeAccounts.size());
+        List<GcpAccount> allAccounts = accountRepository.findAll();
+        log.info("Checking thresholds for {} GCP account(s)", allAccounts.size());
         
         List<GcpAlert> allAlerts = new ArrayList<>();
         
-        for (GcpAccount account : activeAccounts) {
+        for (GcpAccount account : allAccounts) {
             try {
                 List<GcpAlert> accountAlerts = checkAccount(account.getId());
                 allAlerts.addAll(accountAlerts);
@@ -55,17 +55,16 @@ public class GcpAlertService {
         GcpAccount account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new IllegalArgumentException("GCP 계정을 찾을 수 없습니다: " + accountId));
         
-        if (!Boolean.TRUE.equals(account.getActive())) {
-            log.warn("Account {} is not active, skipping alert check", accountId);
-            return new ArrayList<>();
-        }
-        
-        log.info("Checking thresholds for account {} ({})", accountId, account.getAccountName());
+        log.info("Checking thresholds for account {} ({})", accountId, account.getName());
         
         // GCP 리소스 목록 조회
-        List<GcpResourceResponse> resources;
+        List<GcpResourceResponse> resources = new ArrayList<>();
         try {
-            resources = resourceService.getResources(accountId);
+            // owner ID는 account의 owner에서 가져옴
+            if (account.getOwner() != null) {
+                GcpResourceListResponse response = resourceService.listResources(accountId, account.getOwner().getId());
+                resources = response.getResources();
+            }
         } catch (Exception e) {
             log.error("Failed to fetch GCP resources for account {}: {}", accountId, e.getMessage());
             return new ArrayList<>();
@@ -216,7 +215,7 @@ public class GcpAlertService {
                 "[%s] 리소스 %s(%s)에서 규칙 '%s' 위반 감지.\n" +
                 "메트릭: %s, 현재값: %.2f, 임계값: %.2f\n" +
                 "%s",
-                account.getAccountName(),
+                account.getName(),
                 resource.getResourceName(),
                 resource.getResourceId(),
                 rule.getTitle(),
@@ -228,7 +227,7 @@ public class GcpAlertService {
         
         return GcpAlert.builder()
                 .accountId(account.getId())
-                .accountName(account.getAccountName())
+                .accountName(account.getName())
                 .resourceId(resource.getResourceId())
                 .resourceName(resource.getResourceName())
                 .ruleId(rule.getId())
