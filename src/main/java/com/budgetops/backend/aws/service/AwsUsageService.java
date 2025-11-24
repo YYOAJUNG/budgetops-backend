@@ -260,6 +260,27 @@ public class AwsUsageService {
                     metrics.put("consumedReadCapacityUnits", readCapacity);
                     metrics.put("consumedWriteCapacityUnits", writeCapacity);
                 }
+                case "ELB" -> {
+                    // Classic ELB 요청 수 집계
+                    double classicReq = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/ELB",
+                            "RequestCount",
+                            start,
+                            end
+                    );
+                    // Application / Network Load Balancer 요청 수 집계
+                    double albReq = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/ApplicationELB",
+                            "RequestCount",
+                            start,
+                            end
+                    );
+
+                    metrics.put("requestCountClassic", classicReq);
+                    metrics.put("requestCountApplication", albReq);
+                }
                 case "VPC" -> {
                     // VPC는 네트워크 전송량, NAT Gateway 등 여러 리소스로 구성됨
                     // 현재는 별도 메트릭을 집계하지 않고 빈 메트릭만 반환 (확장 포인트)
@@ -299,6 +320,9 @@ public class AwsUsageService {
             case "EC2 - OTHER" -> "EC2_OTHER";
             case "AMAZON RELATIONAL DATABASE SERVICE" -> "RDS";
             case "AMAZON SIMPLE STORAGE SERVICE" -> "S3";
+            case "AMAZON DYNAMODB" -> "DYNAMODB";
+            case "AWS LAMBDA" -> "LAMBDA";
+            case "AMAZON ELASTIC LOAD BALANCING" -> "ELB";
             case "AMAZON VIRTUAL PRIVATE CLOUD" -> "VPC";
             case "AWS COST EXPLORER" -> "COST_EXPLORER";
             case "OTHERS" -> "OTHERS";
