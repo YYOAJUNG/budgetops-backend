@@ -8,13 +8,13 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * AWS EC2 알림 정보
+ * AWS 알림 정보 (EC2, RDS, S3 등 모든 서비스)
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AwsEc2Alert {
+public class AwsAlert {
     /**
      * 알림 ID
      */
