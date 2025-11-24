@@ -146,7 +146,7 @@ public class AwsUsageService {
         }
         
         String region = account.getDefaultRegion() != null ? account.getDefaultRegion() : "us-east-1";
-        String normalizedService = service != null ? service.toUpperCase() : "";
+        String normalizedService = normalizeServiceForMetrics(service);
 
         try (CloudWatchClient cloudWatchClient = createCloudWatchClient(account, region)) {
             Instant start = LocalDate.parse(startDate).atStartOfDay(ZoneId.systemDefault()).toInstant();
@@ -156,7 +156,7 @@ public class AwsUsageService {
             Map<String, Double> metrics = new HashMap<>();
 
             switch (normalizedService) {
-                case "EC2" -> {
+                case "EC2", "EC2_OTHER" -> {
                     // EC2 인스턴스 실행 시간 집계 (기존 로직 유지)
                     GetMetricStatisticsRequest request = GetMetricStatisticsRequest.builder()
                             .namespace("AWS/EC2")
@@ -200,6 +200,15 @@ public class AwsUsageService {
                     metrics.put("bucketSizeGb", totalBucketSizeGb);
                     metrics.put("objectCount", totalObjectCount);
                 }
+                case "VPC" -> {
+                    // VPC는 네트워크 전송량, NAT Gateway 등 여러 리소스로 구성됨
+                    // 현재는 별도 메트릭을 집계하지 않고 빈 메트릭만 반환 (확장 포인트)
+                    log.info("UsageMetrics requested for VPC - currently no aggregated metrics implemented");
+                }
+                case "COST_EXPLORER", "OTHERS" -> {
+                    // 비용 분석 도구/기타 항목은 CloudWatch 기반 사용량 메트릭이 의미가 없으므로 스킵
+                    log.info("UsageMetrics requested for service without CloudWatch usage metrics: {}", service);
+                }
                 default -> {
                     // 아직 지원하지 않는 서비스는 빈 메트릭 반환
                     log.warn("UsageMetrics requested for unsupported service: {}", service);
@@ -212,6 +221,28 @@ public class AwsUsageService {
             log.error("Failed to fetch usage metrics for service {}: {}", service, e.getMessage(), e);
             return new UsageMetrics(service, new HashMap<>());
         }
+    }
+
+    /**
+     * Cost Explorer 서비스 이름 등을 CloudWatch 메트릭 조회용 키로 정규화
+     */
+    private String normalizeServiceForMetrics(String service) {
+        if (service == null) {
+            return "";
+        }
+        String trimmed = service.trim();
+        String upper = trimmed.toUpperCase();
+
+        // Cost Explorer에서 내려오는 대표적인 서비스 이름 매핑
+        return switch (upper) {
+            case "AMAZON ELASTIC COMPUTE CLOUD - COMPUTE" -> "EC2";
+            case "EC2 - OTHER" -> "EC2_OTHER";
+            case "AMAZON RELATIONAL DATABASE SERVICE" -> "RDS";
+            case "AMAZON VIRTUAL PRIVATE CLOUD" -> "VPC";
+            case "AWS COST EXPLORER" -> "COST_EXPLORER";
+            case "OTHERS" -> "OTHERS";
+            default -> upper;
+        };
     }
 
     /**
