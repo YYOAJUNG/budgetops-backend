@@ -152,21 +152,23 @@ public class GcpAlertService {
             boolean hasData = false;
             
             // TODO: Cloud Monitoring API 연동하여 실제 메트릭 조회
-            // 현재는 mock 데이터로 처리
+            // 현재는 낮은 사용률 시뮬레이션 (알림 발생 가능하도록)
             switch (metric) {
                 case "cpu_utilization":
-                    // 임시: 랜덤 값 (실제로는 Cloud Monitoring에서 조회)
-                    averageValue = Math.random() * 100;
+                    // CPU 사용률: 10-45% 사이 랜덤 (40% 임계치 위반 가능)
+                    averageValue = 10 + (Math.random() * 35);
                     hasData = true;
                     break;
                     
                 case "memory_utilization":
-                    averageValue = Math.random() * 100;
+                    // 메모리 사용률: 15-50% 사이 랜덤
+                    averageValue = 15 + (Math.random() * 35);
                     hasData = true;
                     break;
                     
                 case "network_in":
-                    averageValue = Math.random() * 10;
+                    // 네트워크 인바운드: 0.1-5 MB 사이 랜덤
+                    averageValue = 0.1 + (Math.random() * 4.9);
                     hasData = true;
                     break;
                     
@@ -174,6 +176,9 @@ public class GcpAlertService {
                     log.warn("Unknown metric: {}", metric);
                     return MetricCheckResult.notViolated();
             }
+            
+            log.debug("GCP Metric check - Resource: {}, Metric: {}, Value: {:.2f}", 
+                    resource.getResourceName(), metric, averageValue);
             
             if (!hasData) {
                 return MetricCheckResult.notViolated();
@@ -189,6 +194,8 @@ public class GcpAlertService {
             boolean violated = averageValue < threshold;
             
             if (violated) {
+                log.info("GCP Alert triggered - Resource: {}, Metric: {}, Current: {:.2f}, Threshold: {:.2f}", 
+                        resource.getResourceName(), metric, averageValue, threshold);
                 return MetricCheckResult.violated(averageValue, threshold);
             } else {
                 return MetricCheckResult.notViolated();
