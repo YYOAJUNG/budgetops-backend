@@ -220,6 +220,26 @@ public class AwsUsageService {
                         metrics.put("instanceHours", totalSamples);
                     }
                 }
+                case "LAMBDA" -> {
+                    // Lambda 함수 호출 수 및 에러 수 집계
+                    double totalInvocations = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/Lambda",
+                            "Invocations",
+                            start,
+                            end
+                    );
+                    double totalErrors = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/Lambda",
+                            "Errors",
+                            start,
+                            end
+                    );
+
+                    metrics.put("invocations", totalInvocations);
+                    metrics.put("errors", totalErrors);
+                }
                 case "VPC" -> {
                     // VPC는 네트워크 전송량, NAT Gateway 등 여러 리소스로 구성됨
                     // 현재는 별도 메트릭을 집계하지 않고 빈 메트릭만 반환 (확장 포인트)
