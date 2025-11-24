@@ -240,6 +240,26 @@ public class AwsUsageService {
                     metrics.put("invocations", totalInvocations);
                     metrics.put("errors", totalErrors);
                 }
+                case "DYNAMODB" -> {
+                    // DynamoDB 읽기/쓰기 용량 단위 집계
+                    double readCapacity = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/DynamoDB",
+                            "ConsumedReadCapacityUnits",
+                            start,
+                            end
+                    );
+                    double writeCapacity = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/DynamoDB",
+                            "ConsumedWriteCapacityUnits",
+                            start,
+                            end
+                    );
+
+                    metrics.put("consumedReadCapacityUnits", readCapacity);
+                    metrics.put("consumedWriteCapacityUnits", writeCapacity);
+                }
                 case "VPC" -> {
                     // VPC는 네트워크 전송량, NAT Gateway 등 여러 리소스로 구성됨
                     // 현재는 별도 메트릭을 집계하지 않고 빈 메트릭만 반환 (확장 포인트)
