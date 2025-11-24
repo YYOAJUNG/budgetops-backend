@@ -200,6 +200,26 @@ public class AwsUsageService {
                     metrics.put("bucketSizeGb", totalBucketSizeGb);
                     metrics.put("objectCount", totalObjectCount);
                 }
+                case "RDS" -> {
+                    // RDS 인스턴스 실행 시간 집계 (CPUUtilization 샘플 수 기반 근사)
+                    GetMetricStatisticsRequest request = GetMetricStatisticsRequest.builder()
+                            .namespace("AWS/RDS")
+                            .metricName("CPUUtilization")
+                            .startTime(start)
+                            .endTime(end)
+                            .period(3600) // 1시간 단위
+                            .statistics(Statistic.SAMPLE_COUNT)
+                            .build();
+
+                    GetMetricStatisticsResponse response = cloudWatchClient.getMetricStatistics(request);
+
+                    if (response.datapoints() != null && !response.datapoints().isEmpty()) {
+                        double totalSamples = response.datapoints().stream()
+                                .mapToDouble(Datapoint::sampleCount)
+                                .sum();
+                        metrics.put("instanceHours", totalSamples);
+                    }
+                }
                 case "VPC" -> {
                     // VPC는 네트워크 전송량, NAT Gateway 등 여러 리소스로 구성됨
                     // 현재는 별도 메트릭을 집계하지 않고 빈 메트릭만 반환 (확장 포인트)
