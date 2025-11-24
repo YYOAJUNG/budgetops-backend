@@ -129,19 +129,47 @@ public class NcpAlertService {
         String metric = condition.getMetric();
         
         try {
-            double averageValue = Math.random() * 100; // TODO: 실제 NCP 모니터링 API 연동
-            boolean hasData = !metric.equals("network_in");
+            // TODO: 실제 NCP 모니터링 API 연동
+            // 현재는 임시로 낮은 사용률 시뮬레이션 (알림 발생 가능하도록)
+            double averageValue;
+            boolean hasData = true;
             
-            if (!hasData) {
-                return MetricCheckResult.notViolated();
+            switch (metric) {
+                case "cpu_utilization":
+                    // CPU 사용률: 10-45% 사이 랜덤 (40% 임계치 위반 가능)
+                    averageValue = 10 + (Math.random() * 35);
+                    break;
+                    
+                case "memory_utilization":
+                    // 메모리 사용률: 15-50% 사이 랜덤
+                    averageValue = 15 + (Math.random() * 35);
+                    break;
+                    
+                case "network_in":
+                    // 네트워크 인바운드: 0.1-5 MB 사이 랜덤
+                    averageValue = 0.1 + (Math.random() * 4.9);
+                    break;
+                    
+                default:
+                    log.warn("Unknown metric: {}", metric);
+                    return MetricCheckResult.notViolated();
             }
+            
+            log.debug("NCP Metric check - Server: {}, Metric: {}, Value: {:.2f}", 
+                    server.getServerName(), metric, averageValue);
             
             Double threshold = condition.getThresholdAsDouble();
             if (threshold == null) {
                 return MetricCheckResult.notViolated();
             }
             
+            // 기본 연산자는 < (미만), 즉 현재값이 임계값보다 작으면 위반
             boolean violated = averageValue < threshold;
+            
+            if (violated) {
+                log.info("NCP Alert triggered - Server: {}, Metric: {}, Current: {:.2f}, Threshold: {:.2f}", 
+                        server.getServerName(), metric, averageValue, threshold);
+            }
             
             return violated ? MetricCheckResult.violated(averageValue, threshold) : MetricCheckResult.notViolated();
             
