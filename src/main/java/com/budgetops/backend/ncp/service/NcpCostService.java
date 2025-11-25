@@ -39,8 +39,8 @@ public class NcpCostService {
      * @param endMonth 종료 월 (YYYYMM 형식, 예: 202403)
      * @return 월별 비용 목록
      */
-    public List<NcpMonthlyCost> getCosts(Long accountId, String startMonth, String endMonth) {
-        NcpAccount account = validateAndGetAccount(accountId);
+    public List<NcpMonthlyCost> getCosts(Long accountId, Long memberId, String startMonth, String endMonth) {
+        NcpAccount account = validateAndGetAccount(accountId, memberId);
         log.info("Fetching NCP costs for account {} from {} to {}", accountId, startMonth, endMonth);
 
         try {
@@ -69,8 +69,8 @@ public class NcpCostService {
      * @param month 조회 월 (YYYYMM 형식, 예: 202401)
      * @return 비용 요약 정보
      */
-    public NcpCostSummary getCostSummary(Long accountId, String month) {
-        List<NcpMonthlyCost> costs = getCosts(accountId, month, month);
+    public NcpCostSummary getCostSummary(Long accountId, Long memberId, String month) {
+        List<NcpMonthlyCost> costs = getCosts(accountId, memberId, month, month);
 
         CostAggregation aggregation = aggregateCosts(costs);
 
@@ -151,8 +151,8 @@ public class NcpCostService {
      * @param endDay 종료 일 (YYYYMMDD 형식, 예: 20240131)
      * @return 일별 사용량 목록
      */
-    public List<NcpDailyUsage> getDailyUsage(Long accountId, String startDay, String endDay) {
-        NcpAccount account = validateAndGetAccount(accountId);
+    public List<NcpDailyUsage> getDailyUsage(Long accountId, Long memberId, String startDay, String endDay) {
+        NcpAccount account = validateAndGetAccount(accountId, memberId);
         log.info("Fetching NCP daily usage for account {} from {} to {}", accountId, startDay, endDay);
 
         try {
@@ -177,8 +177,8 @@ public class NcpCostService {
     /**
      * 계정 검증 및 조회
      */
-    private NcpAccount validateAndGetAccount(Long accountId) {
-        NcpAccount account = accountRepository.findById(accountId)
+    private NcpAccount validateAndGetAccount(Long accountId, Long memberId) {
+        NcpAccount account = accountRepository.findByIdAndOwnerId(accountId, memberId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, ERROR_MSG_ACCOUNT_NOT_FOUND));
 
         if (!Boolean.TRUE.equals(account.getActive())) {
@@ -186,6 +186,26 @@ public class NcpCostService {
         }
 
         return account;
+    }
+
+    /**
+     * 특정 회원의 NCP 계정 총 비용 (단일 월 기준)
+     */
+    public double getMemberMonthlyCost(Long memberId, String month) {
+        List<NcpAccount> accounts = accountRepository.findByOwnerIdAndActiveTrue(memberId);
+        if (accounts.isEmpty()) {
+            return 0.0;
+        }
+        double total = 0.0;
+        for (NcpAccount account : accounts) {
+            try {
+                NcpCostSummary summary = getCostSummary(account.getId(), memberId, month);
+                total += summary.getTotalCost() != null ? summary.getTotalCost() : 0.0;
+            } catch (Exception e) {
+                log.warn("Failed to fetch NCP cost for account {}: {}", account.getId(), e.getMessage());
+            }
+        }
+        return total;
     }
 
     /**

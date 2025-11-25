@@ -249,6 +249,27 @@ public class GcpCostService {
         
         return response;
     }
+
+    /**
+     * 특정 회원의 모든 GCP 계정 비용 합계
+     */
+    @Transactional(readOnly = true)
+    public double getMemberTotalNetCost(Long memberId, String startDate, String endDate) {
+        List<GcpAccount> accounts = accountRepository.findByOwnerId(memberId);
+        if (accounts.isEmpty()) {
+            return 0.0;
+        }
+        double total = 0.0;
+        for (GcpAccount account : accounts) {
+            try {
+                GcpAccountDailyCostsResponse response = getCosts(account.getId(), startDate, endDate);
+                total += Math.max(0.0, response.getTotalNetCost());
+            } catch (Exception e) {
+                log.warn("Failed to fetch GCP cost for account {}: {}", account.getId(), e.getMessage());
+            }
+        }
+        return roundToFirstDecimal(total);
+    }
     
     /**
      * Billing Export 테이블 이름 목록 찾기
