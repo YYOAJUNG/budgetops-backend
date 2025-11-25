@@ -39,6 +39,11 @@ public class AzureAccountService {
 
         if (existing.isPresent()) {
             AzureAccount account = existing.get();
+
+            if (Boolean.TRUE.equals(account.getActive())) {
+                throw new IllegalArgumentException("이미 등록된 Azure 계정입니다.");
+            }
+
             if (validate && !credentialValidator.isValid(request.getTenantId(), request.getClientId(),
                     request.getClientSecret(), request.getSubscriptionId())) {
                 throw new IllegalArgumentException("Azure 자격증명이 유효하지 않습니다.");
