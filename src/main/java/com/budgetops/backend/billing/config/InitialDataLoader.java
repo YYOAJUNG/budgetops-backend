@@ -1,10 +1,10 @@
 package com.budgetops.backend.billing.config;
 
 import com.budgetops.backend.billing.entity.Billing;
-import com.budgetops.backend.billing.entity.Member;
+import com.budgetops.backend.domain.user.entity.Member;
 import com.budgetops.backend.billing.enums.BillingPlan;
 import com.budgetops.backend.billing.repository.BillingRepository;
-import com.budgetops.backend.billing.repository.MemberRepository;
+import com.budgetops.backend.domain.user.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -28,7 +28,6 @@ public class InitialDataLoader implements CommandLineRunner {
             Member testMember = Member.builder()
                     .email("test@budgetops.com")
                     .name("테스트 사용자")
-                    .password("test1234")
                     .build();
             memberRepository.save(testMember);
 

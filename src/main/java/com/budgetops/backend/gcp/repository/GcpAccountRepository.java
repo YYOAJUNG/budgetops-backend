@@ -9,6 +9,8 @@ import java.util.Optional;
 public interface GcpAccountRepository extends JpaRepository<GcpAccount, Long> {
     Optional<GcpAccount> findByServiceAccountId(String serviceAccountId);
     List<GcpAccount> findByBillingAccountId(String billingAccountId);
+    List<GcpAccount> findByOwnerId(Long ownerId);
+    Optional<GcpAccount> findByIdAndOwnerId(Long id, Long ownerId);
 }
 
 
