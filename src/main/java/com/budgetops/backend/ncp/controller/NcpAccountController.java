@@ -10,7 +10,6 @@ import com.budgetops.backend.ncp.service.NcpCostService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -29,7 +28,7 @@ public class NcpAccountController {
      */
     @PostMapping
     public ResponseEntity<?> register(@Valid @RequestBody NcpAccountCreateRequest req) {
-        NcpAccount saved = service.createWithVerify(req, getCurrentMemberId());
+        NcpAccount saved = service.createWithVerify(req);
         // secret은 응답에서 제외: 최소 정보만 반환
         return ResponseEntity.ok(new Object() {
             public final Long id = saved.getId();
@@ -46,7 +45,7 @@ public class NcpAccountController {
      */
     @GetMapping
     public ResponseEntity<?> getActiveAccounts() {
-        return ResponseEntity.ok(service.getActiveAccounts(getCurrentMemberId()).stream()
+        return ResponseEntity.ok(service.getActiveAccounts().stream()
                 .map(this::toResp)
                 .toList());
     }
@@ -56,7 +55,7 @@ public class NcpAccountController {
      */
     @GetMapping("/{accountId}/info")
     public ResponseEntity<NcpAccountResponse> getAccountInfo(@PathVariable Long accountId) {
-        NcpAccount a = service.getAccountInfo(accountId, getCurrentMemberId());
+        NcpAccount a = service.getAccountInfo(accountId);
         return ResponseEntity.ok(toResp(a));
     }
 
@@ -65,7 +64,7 @@ public class NcpAccountController {
      */
     @DeleteMapping("/{accountId}")
     public ResponseEntity<Void> deleteAccount(@PathVariable Long accountId) {
-        service.deactivateAccount(accountId, getCurrentMemberId());
+        service.deactivateAccount(accountId);
         return ResponseEntity.noContent().build();
     }
 
@@ -86,7 +85,7 @@ public class NcpAccountController {
             endMonth = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM"));
         }
 
-        List<NcpMonthlyCost> costs = costService.getCosts(accountId, getCurrentMemberId(), startMonth, endMonth);
+        List<NcpMonthlyCost> costs = costService.getCosts(accountId, startMonth, endMonth);
         return ResponseEntity.ok(costs);
     }
 
@@ -107,7 +106,7 @@ public class NcpAccountController {
             endDay = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         }
 
-        List<NcpDailyUsage> usageList = costService.getDailyUsage(accountId, getCurrentMemberId(), startDay, endDay);
+        List<NcpDailyUsage> usageList = costService.getDailyUsage(accountId, startDay, endDay);
         return ResponseEntity.ok(usageList);
     }
 
@@ -123,11 +122,5 @@ public class NcpAccountController {
                 .secretKeyLast4("****" + a.getSecretKeyLast4())
                 .active(Boolean.TRUE.equals(a.getActive()))
                 .build();
-    }
-
-    private Long getCurrentMemberId() {
-        return (Long) SecurityContextHolder.getContext()
-                .getAuthentication()
-                .getPrincipal();
     }
 }

@@ -1,7 +1,5 @@
 package com.budgetops.backend.ncp.service;
 
-import com.budgetops.backend.domain.user.entity.Member;
-import com.budgetops.backend.domain.user.repository.MemberRepository;
 import com.budgetops.backend.ncp.dto.NcpAccountCreateRequest;
 import com.budgetops.backend.ncp.entity.NcpAccount;
 import com.budgetops.backend.ncp.repository.NcpAccountRepository;
@@ -22,22 +20,19 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 public class NcpAccountService {
     private final NcpAccountRepository accountRepo;
     private final NcpCredentialValidator credentialValidator;
-    private final MemberRepository memberRepository;
 
     @Value("${app.ncp.validate:true}")
     private boolean validate;
 
     @Transactional
-    public NcpAccount createWithVerify(NcpAccountCreateRequest req, Long memberId) {
+    public NcpAccount createWithVerify(NcpAccountCreateRequest req) {
         // 입력값 trim
         String accessKey = req.getAccessKey() != null ? req.getAccessKey().trim() : null;
         String secretKey = req.getSecretKey() != null ? req.getSecretKey().trim() : null;
         String name = req.getName() != null ? req.getName().trim() : null;
         String regionCode = req.getRegionCode() != null ? req.getRegionCode().trim() : null;
 
-        log.info("Creating NCP account with accessKey: {} for member: {}", accessKey, memberId);
-
-        Member member = getMemberOrThrow(memberId);
+        log.info("Creating NCP account with accessKey: {}", accessKey);
 
         // 기존 계정이 있는지 확인 (활성/비활성 모두 포함)
         var existingAccount = accountRepo.findByAccessKey(accessKey);
@@ -64,7 +59,6 @@ public class NcpAccountService {
             }
 
             // 계정 정보 업데이트
-            account.setOwner(member);
             account.setName(name);
             account.setRegionCode(regionCode);
             account.setSecretKeyEnc(secretKey); // @Convert에 의해 암호화 저장
@@ -85,7 +79,7 @@ public class NcpAccountService {
         }
 
         // 새 계정 생성
-        log.info("Creating new NCP account with accessKey: {} for member: {}", accessKey, memberId);
+        log.info("Creating new NCP account with accessKey: {}", accessKey);
 
         if (validate) {
             boolean ok = credentialValidator.isValid(accessKey, secretKey, regionCode);
@@ -96,7 +90,6 @@ public class NcpAccountService {
         }
 
         NcpAccount a = new NcpAccount();
-        a.setOwner(member);
         a.setName(name);
         a.setRegionCode(regionCode);
         a.setAccessKey(accessKey);
@@ -110,24 +103,23 @@ public class NcpAccountService {
     }
 
     @Transactional(readOnly = true)
-    public List<NcpAccount> getActiveAccounts(Long memberId) {
-        getMemberOrThrow(memberId);
-        return accountRepo.findByOwnerIdAndActiveTrue(memberId);
+    public List<NcpAccount> getActiveAccounts() {
+        return accountRepo.findByActiveTrue();
     }
 
     @Transactional(readOnly = true)
-    public NcpAccount getAccountInfo(Long accountId, Long memberId) {
-        return accountRepo.findByIdAndOwnerId(accountId, memberId)
+    public NcpAccount getAccountInfo(Long accountId) {
+        return accountRepo.findById(accountId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "계정을 찾을 수 없습니다."));
     }
 
     @Transactional
-    public void deactivateAccount(Long accountId, Long memberId) {
-        log.info("Deactivating NCP account with id: {} by member: {}", accountId, memberId);
+    public void deactivateAccount(Long accountId) {
+        log.info("Deactivating NCP account with id: {}", accountId);
 
-        NcpAccount account = accountRepo.findByIdAndOwnerId(accountId, memberId)
+        NcpAccount account = accountRepo.findById(accountId)
                 .orElseThrow(() -> {
-                    log.error("Account not found with id: {} for member: {}", accountId, memberId);
+                    log.error("Account not found with id: {}", accountId);
                     return new ResponseStatusException(NOT_FOUND, "계정을 찾을 수 없습니다.");
                 });
 
@@ -139,10 +131,5 @@ public class NcpAccountService {
         } else {
             log.warn("Account with id: {} is already inactive", accountId);
         }
-    }
-
-    private Member getMemberOrThrow(Long memberId) {
-        return memberRepository.findById(memberId)
-                .orElseThrow(() -> new IllegalArgumentException("Member를 찾을 수 없습니다: " + memberId));
     }
 }

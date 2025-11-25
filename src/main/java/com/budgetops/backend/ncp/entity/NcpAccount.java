@@ -1,7 +1,6 @@
 package com.budgetops.backend.ncp.entity;
 
 import com.budgetops.backend.aws.support.CryptoStringConverter;
-import com.budgetops.backend.domain.user.entity.Member;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -32,17 +31,5 @@ public class NcpAccount {
 
     private String regionCode; // KR, JP, US 등
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "member_id", nullable = false)
-    private Member owner;
-
     private Boolean active = Boolean.TRUE; // 등록 즉시 활성
-
-    @PrePersist
-    @PreUpdate
-    private void ensureOwnerAssigned() {
-        if (owner == null) {
-            throw new IllegalStateException("Owner must be assigned to NCP account before persisting.");
-        }
-    }
 }
