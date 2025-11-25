@@ -9,10 +9,7 @@ import java.util.Optional;
 public interface NcpAccountRepository extends JpaRepository<NcpAccount, Long> {
     Optional<NcpAccount> findByAccessKey(String accessKey);
     List<NcpAccount> findByActiveTrue();
-
-    List<NcpAccount> findByOwnerIdAndActiveTrue(Long ownerId);
-
-    Optional<NcpAccount> findByIdAndOwnerId(Long id, Long ownerId);
-
     List<NcpAccount> findByOwnerId(Long ownerId);
+    List<NcpAccount> findByOwnerIdAndActiveTrue(Long ownerId);
+    Optional<NcpAccount> findByIdAndOwnerId(Long id, Long ownerId);
 }

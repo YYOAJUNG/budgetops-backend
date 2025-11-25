@@ -36,8 +36,7 @@ public class NcpAccountService {
         String regionCode = req.getRegionCode() != null ? req.getRegionCode().trim() : null;
 
         log.info("Creating NCP account with accessKey: {} for member: {}", accessKey, memberId);
-
-        Member member = getMemberOrThrow(memberId);
+        Member owner = getMemberOrThrow(memberId);
 
         // 기존 계정이 있는지 확인 (활성/비활성 모두 포함)
         var existingAccount = accountRepo.findByAccessKey(accessKey);
@@ -64,7 +63,7 @@ public class NcpAccountService {
             }
 
             // 계정 정보 업데이트
-            account.setOwner(member);
+            account.setOwner(owner);
             account.setName(name);
             account.setRegionCode(regionCode);
             account.setSecretKeyEnc(secretKey); // @Convert에 의해 암호화 저장
@@ -96,7 +95,7 @@ public class NcpAccountService {
         }
 
         NcpAccount a = new NcpAccount();
-        a.setOwner(member);
+        a.setOwner(owner);
         a.setName(name);
         a.setRegionCode(regionCode);
         a.setAccessKey(accessKey);

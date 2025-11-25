@@ -37,7 +37,6 @@ public class NcpAccount {
     private Member owner;
 
     private Boolean active = Boolean.TRUE; // 등록 즉시 활성
-
     @PrePersist
     @PreUpdate
     private void ensureOwnerAssigned() {

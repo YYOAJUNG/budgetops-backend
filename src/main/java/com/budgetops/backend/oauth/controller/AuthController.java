@@ -32,6 +32,13 @@ public class AuthController {
         Claims claims = jwtTokenProvider.getClaims(jwt);
 
         Long memberId = claims.get("memberId", Long.class);
+        if (memberId == null) {
+            try {
+                memberId = Long.parseLong(claims.getSubject());
+            } catch (NumberFormatException ignored) {
+                memberId = null;
+            }
+        }
 
         UserInfo userInfo = UserInfo.builder()
                 .id(memberId)
