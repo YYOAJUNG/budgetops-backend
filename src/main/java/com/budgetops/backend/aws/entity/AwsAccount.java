@@ -1,7 +1,6 @@
 package com.budgetops.backend.aws.entity;
 
 import com.budgetops.backend.aws.support.CryptoStringConverter;
-import com.budgetops.backend.domain.user.entity.Member;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -29,18 +28,5 @@ public class AwsAccount {
     private String secretKeyEnc;
 
     private String secretKeyLast4;   // 마스킹용
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "member_id", nullable = false)
-    private Member owner;
-
     private Boolean active = Boolean.TRUE; // 등록 즉시 활성(또는 UNVERIFIED 대체 가능)
-
-    @PrePersist
-    @PreUpdate
-    private void ensureOwnerAssigned() {
-        if (owner == null) {
-            throw new IllegalStateException("Owner must be assigned to AWS account before persisting.");
-        }
-    }
 }

@@ -2,10 +2,10 @@ package com.budgetops.backend.billing.controller;
 
 import com.budgetops.backend.billing.dto.response.BillingResponse;
 import com.budgetops.backend.billing.entity.Billing;
-import com.budgetops.backend.domain.user.entity.Member;
+import com.budgetops.backend.billing.entity.Member;
 import com.budgetops.backend.billing.exception.BillingNotFoundException;
 import com.budgetops.backend.billing.exception.MemberNotFoundException;
-import com.budgetops.backend.domain.user.repository.MemberRepository;
+import com.budgetops.backend.billing.repository.MemberRepository;
 import com.budgetops.backend.billing.service.BillingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -1,13 +1,12 @@
 package com.budgetops.backend.billing.service;
 
-import com.budgetops.backend.domain.user.entity.Member;
+import com.budgetops.backend.billing.entity.Member;
 import com.budgetops.backend.billing.entity.Payment;
 import com.budgetops.backend.billing.enums.PaymentStatus;
 import com.budgetops.backend.billing.exception.PaymentVerificationException;
 import com.budgetops.backend.billing.repository.PaymentRepository;
 import com.siot.IamportRestClient.IamportClient;
 import com.siot.IamportRestClient.exception.IamportResponseException;
-import com.siot.IamportRestClient.request.AgainPaymentData;
 import com.siot.IamportRestClient.response.IamportResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -61,42 +59,30 @@ public class PaymentService {
     }
 
     /**
-     * 결제 정보 등록 (검증 + 저장)
-     */
-    public Payment registerPayment(String impUid, String customerUid, Member member) {
-        verifyPayment(impUid);
-        return savePayment(impUid, customerUid, member);
-    }
-
-    /**
      * 결제 정보 저장/업데이트
      */
-    public Payment savePayment(String impUid, String customerUid, Member member) {
+    public Payment savePayment(String impUid, Member member) {
         Optional<Payment> existingPayment = paymentRepository.findByMember(member);
 
         if (existingPayment.isPresent()) {
             // 기존 결제 정보 업데이트
             Payment payment = existingPayment.get();
             payment.setImpUid(impUid);
-            payment.setCustomerUid(customerUid);
             payment.setStatus(PaymentStatus.PAID);
             payment.setLastVerifiedAt(LocalDateTime.now());
 
-            log.info("결제 정보 업데이트: memberId={}, impUid={}, customerUid={}",
-                    member.getId(), impUid, customerUid);
+            log.info("결제 정보 업데이트: memberId={}, impUid={}", member.getId(), impUid);
             return paymentRepository.save(payment);
         } else {
             // 새로운 결제 정보 생성
             Payment newPayment = Payment.builder()
                     .member(member)
                     .impUid(impUid)
-                    .customerUid(customerUid)
                     .status(PaymentStatus.PAID)
                     .lastVerifiedAt(LocalDateTime.now())
                     .build();
 
-            log.info("결제 정보 생성: memberId={}, impUid={}, customerUid={}",
-                    member.getId(), impUid, customerUid);
+            log.info("결제 정보 생성: memberId={}, impUid={}", member.getId(), impUid);
             return paymentRepository.save(newPayment);
         }
     }
@@ -130,43 +116,5 @@ public class PaymentService {
             paymentRepository.delete(p);
             log.info("결제 정보 삭제: memberId={}", member.getId());
         });
-    }
-
-    /**
-     * 빌링키를 사용한 자동 결제
-     */
-    public String payWithBillingKey(Member member, String merchantUid, String orderName, int amount) {
-        Payment payment = paymentRepository.findByMember(member)
-                .orElseThrow(() -> new IllegalStateException("등록된 결제 수단이 없습니다."));
-
-        String customerUid = payment.getCustomerUid();
-        if (customerUid == null || customerUid.isEmpty()) {
-            throw new IllegalStateException("빌링키가 등록되지 않았습니다.");
-        }
-
-        try {
-            // PortOne API를 통한 빌링키 결제 (againPayment 메서드 사용)
-            AgainPaymentData againData = new AgainPaymentData(
-                    customerUid,
-                    merchantUid,
-                    BigDecimal.valueOf(amount)
-            );
-            againData.setName(orderName);
-
-            IamportResponse<com.siot.IamportRestClient.response.Payment> response =
-                    iamportClient.againPayment(againData);
-
-            if (response.getResponse() == null) {
-                throw new PaymentVerificationException("빌링키 결제 실패");
-            }
-
-            String impUid = response.getResponse().getImpUid();
-            log.info("빌링키 결제 성공: memberId={}, impUid={}, amount={}", member.getId(), impUid, amount);
-            return impUid;
-
-        } catch (IamportResponseException | IOException e) {
-            log.error("빌링키 결제 실패: memberId={}, error={}", member.getId(), e.getMessage());
-            throw new PaymentVerificationException("빌링키 결제에 실패했습니다: " + e.getMessage(), e);
-        }
     }
 }

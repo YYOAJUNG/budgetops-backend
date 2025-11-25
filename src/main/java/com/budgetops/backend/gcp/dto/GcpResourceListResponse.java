@@ -9,7 +9,6 @@ import java.util.List;
 @Setter
 public class GcpResourceListResponse {
     private Long accountId;
-    private String accountName;
     private String projectId;
     private List<GcpResourceResponse> resources;
 }
