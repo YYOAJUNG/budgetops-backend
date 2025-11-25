@@ -44,6 +44,8 @@ class AzureCostServiceTest {
     private AzureAccount account;
     private AzureAccessToken token;
 
+    private static final Long MEMBER_ID = 1L;
+
     @BeforeEach
     void setUp() {
         account = new AzureAccount();
@@ -64,7 +66,7 @@ class AzureCostServiceTest {
     @Test
     @DisplayName("일별 비용 조회는 Azure Cost API 응답을 매핑한다")
     void getDailyCosts_success() throws Exception {
-        when(repository.findById(1L)).thenReturn(Optional.of(account));
+        when(repository.findByIdAndOwnerId(1L, MEMBER_ID)).thenReturn(Optional.of(account));
         when(tokenManager.getToken("tenant-1", "client-1", "secret-1")).thenReturn(token);
 
         JsonNode response = OBJECT_MAPPER.readTree("""
@@ -86,7 +88,7 @@ class AzureCostServiceTest {
         when(apiClient.queryCosts(eq("sub-1"), anyString(), eq("2025-01-01"), eq("2025-01-31"), eq("Daily")))
                 .thenReturn(response);
 
-        List<AzureCostService.DailyCost> costs = service.getCosts(1L, "2025-01-01", "2025-01-31");
+        List<AzureCostService.DailyCost> costs = service.getCosts(1L, MEMBER_ID, "2025-01-01", "2025-01-31");
 
         assertThat(costs).hasSize(2);
         assertThat(costs.get(0).getAmount()).isEqualTo(12.34);
@@ -96,7 +98,7 @@ class AzureCostServiceTest {
     @Test
     @DisplayName("월별 비용 조회는 총 금액과 통화를 반환한다")
     void getMonthlyCost_success() throws Exception {
-        when(repository.findById(1L)).thenReturn(Optional.of(account));
+        when(repository.findByIdAndOwnerId(1L, MEMBER_ID)).thenReturn(Optional.of(account));
         when(tokenManager.getToken("tenant-1", "client-1", "secret-1")).thenReturn(token);
 
         JsonNode response = OBJECT_MAPPER.readTree("""
@@ -116,7 +118,7 @@ class AzureCostServiceTest {
         when(apiClient.queryCosts(eq("sub-1"), anyString(), anyString(), anyString(), eq("None")))
                 .thenReturn(response);
 
-        AzureCostService.MonthlyCost cost = service.getMonthlyCost(1L, 2025, 1);
+        AzureCostService.MonthlyCost cost = service.getMonthlyCost(1L, MEMBER_ID, 2025, 1);
 
         assertThat(cost.getAmount()).isEqualTo(55.0);
         assertThat(cost.getCurrency()).isEqualTo("USD");
@@ -138,7 +140,7 @@ class AzureCostServiceTest {
 
         successAccount.setName("Success");
 
-        when(repository.findByActiveTrue()).thenReturn(List.of(successAccount, failAccount));
+        when(repository.findByOwnerIdAndActiveTrue(MEMBER_ID)).thenReturn(List.of(successAccount, failAccount));
         when(tokenManager.getToken("tenant-1", "client-1", "secret-1")).thenReturn(token);
         when(tokenManager.getToken("tenant-2", "client-2", "secret-2"))
                 .thenReturn(token);
@@ -162,7 +164,7 @@ class AzureCostServiceTest {
         when(apiClient.queryCosts(eq("sub-2"), anyString(), anyString(), anyString(), eq("None")))
                 .thenThrow(new IllegalStateException("boom"));
 
-        List<AzureCostService.AccountCost> costs = service.getAllAccountsCosts("2025-01-01", "2025-01-31");
+        List<AzureCostService.AccountCost> costs = service.getAllAccountsCosts(MEMBER_ID, "2025-01-01", "2025-01-31");
 
         assertThat(costs).hasSize(2);
         assertThat(costs).anyMatch(c -> c.getAccountId().equals(1L) && c.getAmount() == 10.0);

@@ -13,4 +13,6 @@ public interface NcpAccountRepository extends JpaRepository<NcpAccount, Long> {
     List<NcpAccount> findByOwnerIdAndActiveTrue(Long ownerId);
 
     Optional<NcpAccount> findByIdAndOwnerId(Long id, Long ownerId);
+
+    List<NcpAccount> findByOwnerId(Long ownerId);
 }
