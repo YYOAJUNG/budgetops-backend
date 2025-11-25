@@ -1,7 +1,6 @@
 package com.budgetops.backend.budget.service;
 
 import com.budgetops.backend.azure.service.AzureCostService;
-import com.budgetops.backend.billing.repository.BillingRepository;
 import com.budgetops.backend.aws.service.AwsCostService;
 import com.budgetops.backend.gcp.service.GcpCostService;
 import com.budgetops.backend.ncp.service.NcpCostService;
@@ -27,7 +26,6 @@ public class CloudCostAggregator {
     private final GcpCostService gcpCostService;
     private final NcpCostService ncpCostService;
     private final CurrencyConversionService currencyConversionService;
-    private final BillingRepository billingRepository;
 
     public CloudCostSnapshot calculateCurrentMonth(Long memberId) {
         LocalDate start = LocalDate.now().withDayOfMonth(1);
@@ -41,11 +39,10 @@ public class CloudCostAggregator {
         BigDecimal azure = safeAzureSum(memberId, startDate, endDate);
         BigDecimal gcp = safeGcpSum(memberId, startDate, endDate);
         BigDecimal ncp = safeNcpSum(memberId, month);
-        BigDecimal billing = safeBillingCost(memberId);
 
-        BigDecimal total = aws.add(azure).add(gcp).add(ncp).add(billing);
+        BigDecimal total = aws.add(azure).add(gcp).add(ncp);
 
-        return new CloudCostSnapshot(total, aws, azure, gcp, ncp, billing, month);
+        return new CloudCostSnapshot(total, aws, azure, gcp, ncp, month);
     }
 
     private BigDecimal safeAwsSum(Long memberId, String startDate, String endDate) {
@@ -95,19 +92,12 @@ public class CloudCostAggregator {
         }
     }
 
-    private BigDecimal safeBillingCost(Long memberId) {
-        return billingRepository.findByMemberId(memberId)
-                .map(billing -> BigDecimal.valueOf(billing.getCurrentPrice()).setScale(2, RoundingMode.HALF_UP))
-                .orElse(BigDecimal.ZERO);
-    }
-
     public record CloudCostSnapshot(
             BigDecimal totalKrw,
             BigDecimal awsKrw,
             BigDecimal azureKrw,
             BigDecimal gcpKrw,
             BigDecimal ncpKrw,
-            BigDecimal billingKrw,
             String month
     ) {
     }
