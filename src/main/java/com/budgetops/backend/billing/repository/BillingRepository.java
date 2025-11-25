@@ -12,5 +12,7 @@ public interface BillingRepository extends JpaRepository<Billing, Long> {
 
     Optional<Billing> findByMember(Member member);
 
+    Optional<Billing> findByMemberId(Long memberId);
+
     boolean existsByMember(Member member);
 }
