@@ -1,6 +1,7 @@
 package com.budgetops.backend.ncp.service;
 
 import com.budgetops.backend.ncp.client.NcpApiClient;
+import com.budgetops.backend.ncp.dto.NcpCostSummary;
 import com.budgetops.backend.ncp.dto.NcpDailyUsage;
 import com.budgetops.backend.ncp.dto.NcpMonthlyCost;
 import com.budgetops.backend.ncp.entity.NcpAccount;
@@ -58,6 +59,87 @@ public class NcpCostService {
         } catch (Exception e) {
             log.error("Failed to fetch costs for account {} from {} to {}: {}", accountId, startMonth, endMonth, e.getMessage(), e);
             throw new RuntimeException("비용 조회 실패: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * NCP 계정의 월별 비용 요약 조회
+     *
+     * @param accountId NCP 계정 ID
+     * @param month 조회 월 (YYYYMM 형식, 예: 202401)
+     * @return 비용 요약 정보
+     */
+    public NcpCostSummary getCostSummary(Long accountId, String month) {
+        List<NcpMonthlyCost> costs = getCosts(accountId, month, month);
+
+        CostAggregation aggregation = aggregateCosts(costs);
+
+        log.info("Cost summary for account {} month {}: total={}, discount={}",
+                accountId, month, aggregation.totalDemandAmount, aggregation.totalDiscount);
+
+        return NcpCostSummary.builder()
+                .month(month)
+                .totalCost(aggregation.totalDemandAmount)
+                .currency(aggregation.currency)
+                .totalDemandAmount(aggregation.totalDemandAmount)
+                .totalUseAmount(aggregation.totalUseAmount)
+                .totalDiscountAmount(aggregation.totalDiscount)
+                .build();
+    }
+
+    /**
+     * 비용 목록을 집계
+     *
+     * @param costs 비용 목록
+     * @return 집계 결과
+     */
+    private CostAggregation aggregateCosts(List<NcpMonthlyCost> costs) {
+        double totalDemandAmount = 0.0;
+        double totalUseAmount = 0.0;
+        double totalPromotionDiscount = 0.0;
+        double totalEtcDiscount = 0.0;
+        String currency = "KRW";
+
+        for (NcpMonthlyCost cost : costs) {
+            totalDemandAmount += getAmountOrZero(cost.getDemandAmount());
+            totalUseAmount += getAmountOrZero(cost.getUseAmount());
+            totalPromotionDiscount += getAmountOrZero(cost.getPromotionDiscountAmount());
+            totalEtcDiscount += getAmountOrZero(cost.getEtcDiscountAmount());
+
+            if (cost.getCurrency() != null && !cost.getCurrency().isEmpty()) {
+                currency = cost.getCurrency();
+            }
+        }
+
+        return new CostAggregation(
+                totalDemandAmount,
+                totalUseAmount,
+                totalPromotionDiscount + totalEtcDiscount,
+                currency
+        );
+    }
+
+    /**
+     * null-safe 금액 반환
+     */
+    private double getAmountOrZero(Double amount) {
+        return amount != null ? amount : 0.0;
+    }
+
+    /**
+     * 비용 집계 결과를 담는 내부 클래스
+     */
+    private static class CostAggregation {
+        final double totalDemandAmount;
+        final double totalUseAmount;
+        final double totalDiscount;
+        final String currency;
+
+        CostAggregation(double totalDemandAmount, double totalUseAmount, double totalDiscount, String currency) {
+            this.totalDemandAmount = totalDemandAmount;
+            this.totalUseAmount = totalUseAmount;
+            this.totalDiscount = totalDiscount;
+            this.currency = currency;
         }
     }
 
