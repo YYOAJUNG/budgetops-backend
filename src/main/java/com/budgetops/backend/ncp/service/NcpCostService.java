@@ -34,12 +34,13 @@ public class NcpCostService {
      * NCP 계정의 월별 비용 조회
      *
      * @param accountId NCP 계정 ID
+     * @param memberId  소유 Member ID
      * @param startMonth 시작 월 (YYYYMM 형식, 예: 202401)
      * @param endMonth 종료 월 (YYYYMM 형식, 예: 202403)
      * @return 월별 비용 목록
      */
-    public List<NcpMonthlyCost> getCosts(Long accountId, String startMonth, String endMonth) {
-        NcpAccount account = validateAndGetAccount(accountId);
+    public List<NcpMonthlyCost> getCosts(Long accountId, Long memberId, String startMonth, String endMonth) {
+        NcpAccount account = validateAndGetAccount(accountId, memberId);
         log.info("Fetching NCP costs for account {} from {} to {}", accountId, startMonth, endMonth);
 
         try {
@@ -65,12 +66,13 @@ public class NcpCostService {
      * NCP 계정의 일별 사용량 조회
      *
      * @param accountId NCP 계정 ID
+     * @param memberId  소유 Member ID
      * @param startDay 시작 일 (YYYYMMDD 형식, 예: 20240101)
      * @param endDay 종료 일 (YYYYMMDD 형식, 예: 20240131)
      * @return 일별 사용량 목록
      */
-    public List<NcpDailyUsage> getDailyUsage(Long accountId, String startDay, String endDay) {
-        NcpAccount account = validateAndGetAccount(accountId);
+    public List<NcpDailyUsage> getDailyUsage(Long accountId, Long memberId, String startDay, String endDay) {
+        NcpAccount account = validateAndGetAccount(accountId, memberId);
         log.info("Fetching NCP daily usage for account {} from {} to {}", accountId, startDay, endDay);
 
         try {
@@ -93,10 +95,10 @@ public class NcpCostService {
     }
 
     /**
-     * 계정 검증 및 조회
+     * 계정 검증 및 조회 (소유자 검증 포함)
      */
-    private NcpAccount validateAndGetAccount(Long accountId) {
-        NcpAccount account = accountRepository.findById(accountId)
+    private NcpAccount validateAndGetAccount(Long accountId, Long memberId) {
+        NcpAccount account = accountRepository.findByIdAndOwnerId(accountId, memberId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, ERROR_MSG_ACCOUNT_NOT_FOUND));
 
         if (!Boolean.TRUE.equals(account.getActive())) {
