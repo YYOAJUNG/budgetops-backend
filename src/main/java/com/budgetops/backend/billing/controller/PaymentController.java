@@ -1,6 +1,7 @@
 package com.budgetops.backend.billing.controller;
 
 import com.budgetops.backend.billing.constants.DateConstants;
+import com.budgetops.backend.billing.constants.TokenConstants;
 import com.budgetops.backend.billing.dto.request.PaymentRegisterRequest;
 import com.budgetops.backend.billing.dto.request.TokenPurchaseRequest;
 import com.budgetops.backend.billing.dto.response.PaymentHistoryResponse;
@@ -164,11 +165,30 @@ public class PaymentController {
             log.info("일반 결제 사용: userId={}, impUid={}", userId, impUid);
         }
 
-        // Billing 정보 조회 및 토큰 추가
+        // Billing 정보 조회
         Billing billing = billingService.getBillingByMember(member)
                 .orElseThrow(BillingNotFoundException::new);
 
-        billing.addTokens(tokenPackage.getTotalTokens());
+        // Pro 플랜만 토큰 구매 가능
+        if (billing.isFreePlan()) {
+            throw new IllegalStateException("Free 플랜에서는 토큰을 구매할 수 없습니다. Pro 플랜으로 업그레이드해주세요.");
+        }
+
+        // 최대 토큰 보유량 체크
+        int currentTokens = billing.getCurrentTokens();
+        int tokensToAdd = tokenPackage.getTotalTokens();
+        int newTotalTokens = currentTokens + tokensToAdd;
+
+        if (newTotalTokens > TokenConstants.MAX_TOKEN_LIMIT) {
+            int availableSpace = TokenConstants.MAX_TOKEN_LIMIT - currentTokens;
+            throw new IllegalStateException(
+                String.format("토큰 보유량 한도를 초과할 수 없습니다. (현재: %d, 구매: %d, 최대: %d, 구매 가능: %d)",
+                    currentTokens, tokensToAdd, TokenConstants.MAX_TOKEN_LIMIT, availableSpace)
+            );
+        }
+
+        // 토큰 추가
+        billing.addTokens(tokensToAdd);
         billingService.saveBilling(billing);
 
         TokenPurchaseResponse response = TokenPurchaseResponse.builder()
