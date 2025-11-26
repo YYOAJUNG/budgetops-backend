@@ -1,6 +1,5 @@
 package com.budgetops.backend.billing.repository;
 
-import com.budgetops.backend.billing.entity.Billing;
 import com.budgetops.backend.billing.entity.Member;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -8,9 +7,9 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 @Repository
-public interface BillingRepository extends JpaRepository<Billing, Long> {
+public interface MemberRepository extends JpaRepository<Member, Long> {
 
-    Optional<Billing> findByMember(Member member);
+    Optional<Member> findByEmail(String email);
 
-    boolean existsByMember(Member member);
+    boolean existsByEmail(String email);
 }

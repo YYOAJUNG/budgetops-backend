@@ -11,6 +11,5 @@ import java.util.Optional;
 public interface GcpResourceRepository extends JpaRepository<GcpResource, Long> {
     Optional<GcpResource> findByResourceIdAndGcpAccountId(String resourceId, Long gcpAccountId);
     List<GcpResource> findByGcpAccountId(Long gcpAccountId);
-    Optional<GcpResource> findByResourceId(String resourceId);
 }
 

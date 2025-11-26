@@ -1,7 +1,7 @@
 package com.budgetops.backend.billing.service;
 
 import com.budgetops.backend.billing.entity.Billing;
-import com.budgetops.backend.domain.user.entity.Member;
+import com.budgetops.backend.billing.entity.Member;
 import com.budgetops.backend.billing.enums.BillingPlan;
 import com.budgetops.backend.billing.exception.BillingNotFoundException;
 import com.budgetops.backend.billing.exception.InvalidBillingPlanException;
@@ -31,10 +31,9 @@ public class BillingService {
                 .member(member)
                 .currentPlan(BillingPlan.FREE)
                 .currentPrice(0)
-                .currentTokens(100)
                 .build();
 
-        billing.setNextBillingDate(null);
+        billing.setNextBillingDateFromNow();
 
         log.info("빌링 초기화: memberId={}, plan=FREE", member.getId());
         return billingRepository.save(billing);
@@ -69,41 +68,16 @@ public class BillingService {
         Billing billing = billingRepository.findByMember(member)
                 .orElseThrow(() -> new BillingNotFoundException(member.getId()));
 
-        BillingPlan currentPlan = billing.getCurrentPlan();
-
-        // PRO 요금제로 변경 시 결제 처리
+        // PRO 요금제로 변경 시 결제 정보 확인
         if (!newPlan.isFree()) {
             boolean isPaymentRegistered = paymentService.isPaymentRegistered(member);
             if (!isPaymentRegistered) {
                 throw new PaymentRequiredException();
             }
-
-            // FREE → PRO로 변경 시 빌링키로 즉시 결제
-            if (currentPlan.isFree()) {
-                String merchantUid = "PLAN_" + System.currentTimeMillis();
-                String orderName = String.format("%s 플랜 결제", newPlan.getDisplayName());
-                int amount = newPlan.getMonthlyPrice();
-
-                // 빌링키로 즉시 결제
-                String impUid = paymentService.payWithBillingKey(member, merchantUid, orderName, amount);
-                log.info("플랜 변경 결제 완료: memberId={}, plan={}, impUid={}, amount={}",
-                        member.getId(), newPlan, impUid, amount);
-            }
         }
 
         // 요금제 변경
         billing.changePlan(newPlan);
-
-        // 다음 결제일 업데이트 (유료 플랜인 경우에만)
-        if (!newPlan.isFree()) {
-            billing.setNextBillingDateFromNow();
-            log.info("다음 결제일 설정: memberId={}, nextBillingDate={}",
-                    member.getId(), billing.getNextBillingDate());
-        } else {
-            // FREE 플랜으로 변경 시 결제일 초기화
-            billing.setNextBillingDate(null);
-            log.info("FREE 플랜으로 변경, 결제일 초기화: memberId={}", member.getId());
-        }
 
         log.info("요금제 변경: memberId={}, newPlan={}, price={}",
                 member.getId(), newPlan, billing.getCurrentPrice());

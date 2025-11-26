@@ -1,7 +1,5 @@
 package com.budgetops.backend.oauth.handler;
 
-import com.budgetops.backend.domain.user.entity.Member;
-import com.budgetops.backend.domain.user.service.MemberService;
 import com.budgetops.backend.oauth.util.JwtTokenProvider;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -22,7 +20,6 @@ import java.io.IOException;
 public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
 
     private final JwtTokenProvider jwtTokenProvider;
-    private final MemberService memberService;
 
     @Value("${app.oauth2.redirect-uri:https://budgetops.work/oauth/callback}")
     private String redirectUri;
@@ -32,18 +29,13 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
                                         Authentication authentication) throws IOException {
         OAuth2User oAuth2User = (OAuth2User) authentication.getPrincipal();
 
-        String email = oAuth2User.getAttribute("email");
-        String name = oAuth2User.getAttribute("name");
+        // JWT 토큰 생성
+        String token = jwtTokenProvider.createToken(oAuth2User);
 
-        // 1. Member DB에 저장 (upsert)
-        Member member = memberService.upsertOAuthMember(email, name);
+        String userEmail = oAuth2User.getAttribute("email");
+        log.info("OAuth2 authentication successful for user: {}", userEmail);
 
-        // 2. JWT 토큰 생성 (memberId 포함)
-        String token = jwtTokenProvider.createToken(member);
-
-        log.info("OAuth2 authentication successful for user: email={}, memberId={}", email, member.getId());
-
-        // 3. JWT 토큰을 쿼리 파라미터로 전달하여 프론트엔드로 리다이렉트
+        // JWT 토큰을 쿼리 파라미터로 전달하여 프론트엔드로 리다이렉트
         String targetUrl = UriComponentsBuilder.fromUriString(redirectUri)
                 .queryParam("token", token)
                 .build().toUriString();

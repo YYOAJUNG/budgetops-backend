@@ -8,7 +8,6 @@ import java.time.Instant;
 @Setter
 public class GcpAccountResponse {
     private Long id;
-    private String name; // 사용자가 입력한 계정 이름
     private String serviceAccountName;  // serviceAccountId @ 앞부분 (예: "budgetops")
     // private String projectName;  // TODO: 프로젝트 이름 부분 (예: "My First Project")
     private String projectId;   // projectId (예: "elated-bison-476314-f8")

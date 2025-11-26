@@ -1,7 +1,6 @@
 package com.budgetops.backend.billing.entity;
 
 import com.budgetops.backend.billing.enums.PaymentStatus;
-import com.budgetops.backend.domain.user.entity.Member;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -28,9 +27,6 @@ public class Payment {
 
     @Column(name = "imp_uid")
     private String impUid;  // Iamport 거래 고유 번호
-
-    @Column(name = "customer_uid")
-    private String customerUid;  // 빌링키 (정기결제용)
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

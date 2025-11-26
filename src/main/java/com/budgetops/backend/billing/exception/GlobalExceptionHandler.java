@@ -133,46 +133,6 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 잘못된 인자 예외 처리 (400 Bad Request)
-     */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ErrorResponse> handleIllegalArgumentException(
-            IllegalArgumentException ex,
-            HttpServletRequest request
-    ) {
-        log.warn("IllegalArgumentException: {}", ex.getMessage());
-
-        ErrorResponse errorResponse = ErrorResponse.of(
-                HttpStatus.BAD_REQUEST.value(),
-                "Bad Request",
-                ex.getMessage(),
-                request.getRequestURI()
-        );
-
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
-    }
-
-    /**
-     * 잘못된 상태 예외 처리 (400 Bad Request)
-     */
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<ErrorResponse> handleIllegalStateException(
-            IllegalStateException ex,
-            HttpServletRequest request
-    ) {
-        log.warn("IllegalStateException: {}", ex.getMessage());
-
-        ErrorResponse errorResponse = ErrorResponse.of(
-                HttpStatus.BAD_REQUEST.value(),
-                "Bad Request",
-                ex.getMessage(),
-                request.getRequestURI()
-        );
-
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
-    }
-
-    /**
      * 기타 모든 RuntimeException 처리
      */
     @ExceptionHandler(RuntimeException.class)
