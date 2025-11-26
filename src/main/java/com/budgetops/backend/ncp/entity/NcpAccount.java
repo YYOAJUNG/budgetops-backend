@@ -32,12 +32,11 @@ public class NcpAccount {
 
     private String regionCode; // KR, JP, US 등
 
-    private Boolean active = Boolean.TRUE; // 등록 즉시 활성
-
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "member_id", nullable = false)
     private Member owner;
 
+    private Boolean active = Boolean.TRUE; // 등록 즉시 활성
     @PrePersist
     @PreUpdate
     private void ensureOwnerAssigned() {

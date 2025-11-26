@@ -3,6 +3,8 @@ package com.budgetops.backend.azure.service;
 import com.budgetops.backend.azure.dto.AzureAccountCreateRequest;
 import com.budgetops.backend.azure.entity.AzureAccount;
 import com.budgetops.backend.azure.repository.AzureAccountRepository;
+import com.budgetops.backend.domain.user.entity.Member;
+import com.budgetops.backend.domain.user.repository.MemberRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,12 +32,24 @@ class AzureAccountServiceTest {
     @Mock
     private AzureCredentialValidator credentialValidator;
 
+    @Mock
+    private MemberRepository memberRepository;
+
     @InjectMocks
     private AzureAccountService service;
+
+    private static final Long MEMBER_ID = 1L;
+    private Member member;
 
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(service, "validate", true);
+        member = Member.builder()
+                .id(MEMBER_ID)
+                .email("user@example.com")
+                .name("테스트 사용자")
+                .build();
+        when(memberRepository.findById(MEMBER_ID)).thenReturn(Optional.of(member));
     }
 
     @Test
@@ -59,7 +73,7 @@ class AzureAccountServiceTest {
             return saved;
         });
 
-        AzureAccount result = service.createWithVerify(request);
+        AzureAccount result = service.createWithVerify(request, MEMBER_ID);
 
         assertThat(result.getId()).isEqualTo(100L);
         assertThat(result.getName()).isEqualTo("My Azure");
@@ -85,7 +99,7 @@ class AzureAccountServiceTest {
         when(repository.findByClientIdAndSubscriptionId("client-1", "sub-1"))
                 .thenReturn(Optional.of(existing));
 
-        assertThatThrownBy(() -> service.createWithVerify(request))
+        assertThatThrownBy(() -> service.createWithVerify(request, MEMBER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("이미 등록된");
     }
@@ -112,7 +126,7 @@ class AzureAccountServiceTest {
                 .thenReturn(true);
         when(repository.save(any(AzureAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        AzureAccount result = service.createWithVerify(request);
+        AzureAccount result = service.createWithVerify(request, MEMBER_ID);
 
         assertThat(result.getId()).isEqualTo(42L);
         assertThat(result.getActive()).isTrue();
@@ -141,7 +155,7 @@ class AzureAccountServiceTest {
         when(credentialValidator.isValid("tenant-1", "client-1", "secret-1", "sub-1"))
                 .thenReturn(false);
 
-        assertThatThrownBy(() -> service.createWithVerify(request))
+        assertThatThrownBy(() -> service.createWithVerify(request, MEMBER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("자격증명");
 
@@ -154,9 +168,9 @@ class AzureAccountServiceTest {
         AzureAccount account = new AzureAccount();
         account.setId(1L);
 
-        when(repository.findByActiveTrue()).thenReturn(List.of(account));
+        when(repository.findByOwnerIdAndActiveTrue(MEMBER_ID)).thenReturn(List.of(account));
 
-        assertThat(service.getActiveAccounts()).containsExactly(account);
+        assertThat(service.getActiveAccounts(MEMBER_ID)).containsExactly(account);
     }
 }
 

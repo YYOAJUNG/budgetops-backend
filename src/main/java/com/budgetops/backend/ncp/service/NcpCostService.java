@@ -35,6 +35,7 @@ public class NcpCostService {
      * NCP 계정의 월별 비용 조회
      *
      * @param accountId NCP 계정 ID
+     * @param memberId  소유 Member ID
      * @param startMonth 시작 월 (YYYYMM 형식, 예: 202401)
      * @param endMonth 종료 월 (YYYYMM 형식, 예: 202403)
      * @return 월별 비용 목록
@@ -147,6 +148,7 @@ public class NcpCostService {
      * NCP 계정의 일별 사용량 조회
      *
      * @param accountId NCP 계정 ID
+     * @param memberId  소유 Member ID
      * @param startDay 시작 일 (YYYYMMDD 형식, 예: 20240101)
      * @param endDay 종료 일 (YYYYMMDD 형식, 예: 20240131)
      * @return 일별 사용량 목록
@@ -175,7 +177,7 @@ public class NcpCostService {
     }
 
     /**
-     * 계정 검증 및 조회
+     * 계정 검증 및 조회 (소유자 검증 포함)
      */
     private NcpAccount validateAndGetAccount(Long accountId, Long memberId) {
         NcpAccount account = accountRepository.findByIdAndOwnerId(accountId, memberId)

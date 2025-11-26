@@ -35,8 +35,8 @@ public class NcpAccountService {
         String name = req.getName() != null ? req.getName().trim() : null;
         String regionCode = req.getRegionCode() != null ? req.getRegionCode().trim() : null;
 
-        log.info("Creating NCP account with accessKey: {}", accessKey);
-        Member owner = getMember(memberId);
+        log.info("Creating NCP account with accessKey: {} for member: {}", accessKey, memberId);
+        Member owner = getMemberOrThrow(memberId);
 
         // 기존 계정이 있는지 확인 (활성/비활성 모두 포함)
         var existingAccount = accountRepo.findByAccessKey(accessKey);
@@ -84,7 +84,7 @@ public class NcpAccountService {
         }
 
         // 새 계정 생성
-        log.info("Creating new NCP account with accessKey: {}", accessKey);
+        log.info("Creating new NCP account with accessKey: {} for member: {}", accessKey, memberId);
 
         if (validate) {
             boolean ok = credentialValidator.isValid(accessKey, secretKey, regionCode);
@@ -110,6 +110,7 @@ public class NcpAccountService {
 
     @Transactional(readOnly = true)
     public List<NcpAccount> getActiveAccounts(Long memberId) {
+        getMemberOrThrow(memberId);
         return accountRepo.findByOwnerIdAndActiveTrue(memberId);
     }
 
@@ -121,11 +122,11 @@ public class NcpAccountService {
 
     @Transactional
     public void deactivateAccount(Long accountId, Long memberId) {
-        log.info("Deactivating NCP account with id: {}", accountId);
+        log.info("Deactivating NCP account with id: {} by member: {}", accountId, memberId);
 
         NcpAccount account = accountRepo.findByIdAndOwnerId(accountId, memberId)
                 .orElseThrow(() -> {
-                    log.error("Account not found with id: {}", accountId);
+                    log.error("Account not found with id: {} for member: {}", accountId, memberId);
                     return new ResponseStatusException(NOT_FOUND, "계정을 찾을 수 없습니다.");
                 });
 
@@ -139,7 +140,7 @@ public class NcpAccountService {
         }
     }
 
-    private Member getMember(Long memberId) {
+    private Member getMemberOrThrow(Long memberId) {
         return memberRepository.findById(memberId)
                 .orElseThrow(() -> new IllegalArgumentException("Member를 찾을 수 없습니다: " + memberId));
     }
