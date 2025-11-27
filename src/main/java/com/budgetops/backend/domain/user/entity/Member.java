@@ -1,5 +1,6 @@
 package com.budgetops.backend.domain.user.entity;
 
+import com.budgetops.backend.budget.model.BudgetMode;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -43,4 +44,9 @@ public class Member {
 
     @Column(name = "budget_alert_triggered_at")
     private LocalDateTime budgetAlertTriggeredAt;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "budget_mode", nullable = false, length = 32)
+    private BudgetMode budgetMode = BudgetMode.CONSOLIDATED;
 }

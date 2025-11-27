@@ -20,9 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
@@ -270,6 +268,46 @@ public class GcpCostService {
         }
         return roundToFirstDecimal(total);
     }
+
+    /**
+     * 특정 회원의 계정별 비용 요약
+     */
+    @Transactional(readOnly = true)
+    public List<AccountCost> getMemberAccountCosts(Long memberId, String startDate, String endDate) {
+        List<GcpAccount> accounts = accountRepository.findByOwnerId(memberId);
+        List<AccountCost> results = new ArrayList<>();
+        for (GcpAccount account : accounts) {
+            String accountName = optionalName(account);
+            try {
+                GcpAccountDailyCostsResponse response = getCosts(account.getId(), startDate, endDate);
+                results.add(new AccountCost(
+                        account.getId(),
+                        accountName,
+                        Math.max(0.0, response.getTotalNetCost()),
+                        response.getCurrency()
+                ));
+            } catch (Exception e) {
+                log.warn("Failed to fetch GCP cost for account {}: {}", account.getId(), e.getMessage());
+                results.add(new AccountCost(
+                        account.getId(),
+                        accountName,
+                        0.0,
+                        "USD"
+                ));
+            }
+        }
+        return results;
+    }
+
+    private String optionalName(GcpAccount account) {
+        if (account.getName() != null && !account.getName().isBlank()) {
+            return account.getName();
+        }
+        if (account.getProjectId() != null && !account.getProjectId().isBlank()) {
+            return account.getProjectId();
+        }
+        return "GCP #" + account.getId();
+    }
     
     /**
      * Billing Export 테이블 이름 목록 찾기
@@ -402,6 +440,14 @@ public class GcpCostService {
         List<GcpAccountDailyCostsResponse.DailyCost> dailyCosts,
         String currency
     ) {}
+
+    public record AccountCost(
+            Long accountId,
+            String accountName,
+            double totalNetCost,
+            String currency
+    ) {
+    }
     
     /**
      * BigQuery 결과를 DailyCost 리스트로 변환 (날짜별로 이미 집계된 값 사용)
