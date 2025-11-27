@@ -1,7 +1,9 @@
 package com.budgetops.backend.ncp.service;
 
 import com.budgetops.backend.ncp.client.NcpApiClient;
+import com.budgetops.backend.ncp.dto.NcpMetricDataPoint;
 import com.budgetops.backend.ncp.dto.NcpServerInstanceResponse;
+import com.budgetops.backend.ncp.dto.NcpServerMetricsResponse;
 import com.budgetops.backend.ncp.entity.NcpAccount;
 import com.budgetops.backend.ncp.repository.NcpAccountRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -10,10 +12,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
@@ -24,6 +30,7 @@ public class NcpServerService {
 
     private final NcpAccountRepository accountRepository;
     private final NcpApiClient apiClient;
+    private final NcpMetricService metricService;
 
     /**
      * 특정 NCP 계정의 서버 인스턴스 목록 조회
@@ -199,5 +206,104 @@ public class NcpServerService {
                 .vpcNo(server.path("vpcNo").asText(null))
                 .subnetNo(server.path("subnetNo").asText(null))
                 .build();
+    }
+
+    /**
+     * 서버 인스턴스 메트릭 조회
+     */
+    public NcpServerMetricsResponse getInstanceMetrics(Long accountId, String instanceNo, String regionCode, Integer hours) {
+        NcpAccount account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "NCP 계정을 찾을 수 없습니다."));
+
+        if (!Boolean.TRUE.equals(account.getActive())) {
+            throw new IllegalStateException("비활성화된 계정입니다.");
+        }
+
+        int hoursToQuery = hours != null && hours > 0 ? hours : 1;
+        int durationMinutes = hoursToQuery * 60; // 시간을 분으로 변환
+
+        log.info("Fetching metrics for NCP server instance {} for the last {} hours", instanceNo, hoursToQuery);
+
+        try {
+            // 서버 정보 조회 (이름 등)
+            List<NcpServerInstanceResponse> servers = listInstances(accountId, regionCode);
+            NcpServerInstanceResponse server = servers.stream()
+                    .filter(s -> instanceNo.equals(s.getServerInstanceNo()))
+                    .findFirst()
+                    .orElse(null);
+
+            String instanceName = server != null ? server.getServerName() : instanceNo;
+            String region = server != null ? server.getRegionCode() : (regionCode != null ? regionCode : account.getRegionCode());
+
+            // CPU Utilization
+            List<NcpServerMetricsResponse.MetricDataPoint> cpuMetrics = convertToMetricDataPoints(
+                    metricService.queryMetricData(account, instanceNo, "avg_cpu_used_rto", durationMinutes),
+                    "Percent"
+            );
+
+            // Network In
+            List<NcpServerMetricsResponse.MetricDataPoint> networkInMetrics = convertToMetricDataPoints(
+                    metricService.queryMetricData(account, instanceNo, "avg_rcv_bps", durationMinutes),
+                    "bits/sec"
+            );
+
+            // Network Out
+            List<NcpServerMetricsResponse.MetricDataPoint> networkOutMetrics = convertToMetricDataPoints(
+                    metricService.queryMetricData(account, instanceNo, "avg_snd_bps", durationMinutes),
+                    "bits/sec"
+            );
+
+            // Disk Read
+            List<NcpServerMetricsResponse.MetricDataPoint> diskReadMetrics = convertToMetricDataPoints(
+                    metricService.queryMetricData(account, instanceNo, "avg_read_byt_cnt", durationMinutes),
+                    "bytes/sec"
+            );
+
+            // Disk Write
+            List<NcpServerMetricsResponse.MetricDataPoint> diskWriteMetrics = convertToMetricDataPoints(
+                    metricService.queryMetricData(account, instanceNo, "avg_write_byt_cnt", durationMinutes),
+                    "bytes/sec"
+            );
+
+            // File System Utilization
+            List<NcpServerMetricsResponse.MetricDataPoint> fsMetrics = convertToMetricDataPoints(
+                    metricService.queryMetricData(account, instanceNo, "avg_fs_usert", durationMinutes),
+                    "Percent"
+            );
+
+            return NcpServerMetricsResponse.builder()
+                    .instanceNo(instanceNo)
+                    .instanceName(instanceName)
+                    .region(region)
+                    .cpuUtilization(cpuMetrics)
+                    .networkIn(networkInMetrics)
+                    .networkOut(networkOutMetrics)
+                    .diskRead(diskReadMetrics)
+                    .diskWrite(diskWriteMetrics)
+                    .fileSystemUtilization(fsMetrics)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Failed to fetch Cloud Insight metrics for instance {}: {}", instanceNo, e.getMessage(), e);
+            throw new RuntimeException("메트릭 조회 실패: " + e.getMessage());
+        }
+    }
+
+    /**
+     * NcpMetricDataPoint를 NcpServerMetricsResponse.MetricDataPoint로 변환
+     */
+    private List<NcpServerMetricsResponse.MetricDataPoint> convertToMetricDataPoints(
+            List<NcpMetricDataPoint> dataPoints, String unit) {
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                .withZone(ZoneId.of("UTC"));
+
+        return dataPoints.stream()
+                .map(dp -> NcpServerMetricsResponse.MetricDataPoint.builder()
+                        .timestamp(formatter.format(Instant.ofEpochMilli(dp.getTimestamp())))
+                        .value(dp.getValue())
+                        .unit(unit)
+                        .build())
+                .collect(Collectors.toList());
     }
 }

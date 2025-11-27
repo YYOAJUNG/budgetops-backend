@@ -19,6 +19,7 @@ public class NcpApiClient {
 
     private static final String SERVER_API_BASE_URL = "https://ncloud.apigw.ntruss.com";
     private static final String BILLING_API_BASE_URL = "https://billingapi.apigw.ntruss.com/billing/v1";
+    private static final String CLOUD_INSIGHT_API_BASE_URL = "https://cw.apigw.ntruss.com";
 
     private final NcpSignatureGenerator signatureGenerator;
     private final ObjectMapper objectMapper;
@@ -46,6 +47,21 @@ public class NcpApiClient {
     public JsonNode callBillingApi(String path, Map<String, String> params, String accessKey, String secretKey) {
         String url = BILLING_API_BASE_URL + path;
         return get(url, params, accessKey, secretKey);
+    }
+
+    /**
+     * Cloud Insight API 호출 (POST)
+     * Cloud Insight의 QueryData API는 POST 메서드를 사용하며 Request Body로 조회 조건을 전달합니다.
+     *
+     * @param path API 경로 (예: /cw_fea/real/cw/api/data/query)
+     * @param requestBody 요청 본문 (NcpMetricRequest 등)
+     * @param accessKey NCP Access Key
+     * @param secretKey NCP Secret Key
+     * @return API 응답 (JsonNode)
+     */
+    public JsonNode callCloudInsightApi(String path, Object requestBody, String accessKey, String secretKey) {
+        String url = CLOUD_INSIGHT_API_BASE_URL + path;
+        return post(url, null, requestBody, accessKey, secretKey);
     }
 
     /**
