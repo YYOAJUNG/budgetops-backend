@@ -92,10 +92,11 @@ public class NcpApiClient {
                     new HttpEntity<>(headers),
                     String.class
             );
+            log.debug("NCP API Response received (length: {})", response.getBody() != null ? response.getBody().length() : 0);
             return objectMapper.readTree(response.getBody());
         } catch (HttpStatusCodeException e) {
-            log.error("NCP GET 호출 실패: url={}, status={}, body={}", fullUrl, e.getStatusCode(), e.getResponseBodyAsString());
-            throw new IllegalStateException("NCP API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+            log.error("NCP GET 호출 실패: url={}, status={}", fullUrl, e.getStatusCode());
+            throw new IllegalStateException("NCP API 호출 실패: " + e.getStatusCode(), e);
         } catch (Exception e) {
             log.error("NCP GET 호출 중 알 수 없는 오류: url={}", fullUrl, e);
             throw new IllegalStateException("NCP API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
@@ -131,10 +132,11 @@ public class NcpApiClient {
                     new HttpEntity<>(body, headers),
                     String.class
             );
+            log.debug("NCP API Response received (length: {})", response.getBody() != null ? response.getBody().length() : 0);
             return objectMapper.readTree(response.getBody());
         } catch (HttpStatusCodeException e) {
-            log.error("NCP POST 호출 실패: url={}, status={}, body={}", fullUrl, e.getStatusCode(), e.getResponseBodyAsString());
-            throw new IllegalStateException("NCP API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+            log.error("NCP POST 호출 실패: url={}, status={}", fullUrl, e.getStatusCode());
+            throw new IllegalStateException("NCP API 호출 실패: " + e.getStatusCode(), e);
         } catch (Exception e) {
             log.error("NCP POST 호출 중 알 수 없는 오류: url={}", fullUrl, e);
             throw new IllegalStateException("NCP API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);

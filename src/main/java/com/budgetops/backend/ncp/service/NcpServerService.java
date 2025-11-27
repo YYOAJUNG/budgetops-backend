@@ -65,7 +65,6 @@ public class NcpServerService {
                     account.getSecretKeyEnc()
             );
 
-            log.info("NCP API Response: {}", response.toString());
             List<NcpServerInstanceResponse> instances = parseServerInstanceList(response);
             log.info("Found {} server instances in region {} for account {}", instances.size(), targetRegion, accountId);
             return instances;
