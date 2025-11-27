@@ -8,9 +8,9 @@ import lombok.Getter;
  */
 @Getter
 public enum TokenPackage {
-    SMALL("small", 100, 5000, 0, false),
-    MEDIUM("medium", 500, 20000, 50, true),
-    LARGE("large", 1000, 35000, 150, false);
+    SMALL("small", 10000, 5000, 0, false),
+    MEDIUM("medium", 30000, 12000, 0, true),
+    LARGE("large", 50000, 18000, 0, false);
 
     private final String id;
     private final int tokenAmount;

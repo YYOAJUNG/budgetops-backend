@@ -1,14 +1,12 @@
 package com.budgetops.backend.domain.user.entity;
 
-import com.budgetops.backend.billing.entity.Workspace;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
 @Entity
 @Table(name = "member")
@@ -29,10 +27,6 @@ public class Member {
     @Column(nullable = false)
     private String name;
 
-    @ManyToMany(mappedBy = "members")
-    @Builder.Default
-    private List<Workspace> workspaces = new ArrayList<>();
-
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -40,4 +34,13 @@ public class Member {
     @UpdateTimestamp
     @Column(nullable = false)
     private LocalDateTime updatedAt;
+
+    @Column(name = "monthly_budget_limit", precision = 19, scale = 2)
+    private BigDecimal monthlyBudgetLimit;
+
+    @Column(name = "budget_alert_threshold")
+    private Integer budgetAlertThreshold;
+
+    @Column(name = "budget_alert_triggered_at")
+    private LocalDateTime budgetAlertTriggeredAt;
 }

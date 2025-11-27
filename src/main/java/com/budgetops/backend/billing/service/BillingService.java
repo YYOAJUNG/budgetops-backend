@@ -31,11 +31,13 @@ public class BillingService {
                 .member(member)
                 .currentPlan(BillingPlan.FREE)
                 .currentPrice(0)
+                .currentTokens(BillingPlan.FREE.getAiAssistantQuota())  // Free 플랜 초기 토큰 (10k)
                 .build();
 
-        billing.setNextBillingDateFromNow();
+        billing.setNextBillingDate(null);
 
-        log.info("빌링 초기화: memberId={}, plan=FREE", member.getId());
+        log.info("빌링 초기화: memberId={}, plan=FREE, initialTokens={}",
+                member.getId(), BillingPlan.FREE.getAiAssistantQuota());
         return billingRepository.save(billing);
     }
 
@@ -92,6 +94,22 @@ public class BillingService {
 
         // 요금제 변경
         billing.changePlan(newPlan);
+
+        // 플랜에 따라 토큰 조정
+        int currentTokens = billing.getCurrentTokens();
+        int planQuota = newPlan.getAiAssistantQuota();
+
+        // 현재 토큰이 새 플랜의 기본 할당량보다 적으면 기본 할당량으로 설정
+        // (처음 가입 or 플랜 업그레이드 시 최소 보장)
+        if (currentTokens < planQuota) {
+            billing.setCurrentTokens(planQuota);
+            log.info("플랜 변경에 따른 토큰 증가: memberId={}, oldPlan={}, newPlan={}, oldTokens={}, newTokens={}",
+                    member.getId(), currentPlan, newPlan, currentTokens, planQuota);
+        } else {
+            // 기존 토큰 유지 (사용자가 구매한 토큰 보호)
+            log.info("플랜 변경, 기존 토큰 유지: memberId={}, oldPlan={}, newPlan={}, tokens={}",
+                    member.getId(), currentPlan, newPlan, currentTokens);
+        }
 
         // 다음 결제일 업데이트 (유료 플랜인 경우에만)
         if (!newPlan.isFree()) {

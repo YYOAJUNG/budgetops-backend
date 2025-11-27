@@ -1,14 +1,8 @@
 package com.budgetops.backend.gcp.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import jakarta.persistence.Convert;
 import com.budgetops.backend.aws.support.CryptoStringConverter;
+import com.budgetops.backend.domain.user.entity.Member;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.data.annotation.CreatedDate;
@@ -52,9 +46,20 @@ public class GcpAccount {
     @Column(columnDefinition = "TEXT")
     private String encryptedServiceAccountKey;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "member_id", nullable = false)
+    private Member owner;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
-}
 
+    @PrePersist
+    @PreUpdate
+    private void ensureOwnerAssigned() {
+        if (owner == null) {
+            throw new IllegalStateException("Owner must be assigned to GCP account before persisting.");
+        }
+    }
+}
 
