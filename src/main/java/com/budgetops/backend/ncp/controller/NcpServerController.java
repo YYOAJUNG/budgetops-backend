@@ -1,6 +1,7 @@
 package com.budgetops.backend.ncp.controller;
 
 import com.budgetops.backend.ncp.dto.NcpServerInstanceResponse;
+import com.budgetops.backend.ncp.dto.NcpServerMetricsResponse;
 import com.budgetops.backend.ncp.service.NcpServerService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -51,5 +52,19 @@ public class NcpServerController {
     ) {
         List<NcpServerInstanceResponse> instances = serverService.stopInstances(accountId, serverInstanceNos, regionCode);
         return ResponseEntity.ok(instances);
+    }
+
+    /**
+     * 서버 인스턴스 메트릭 조회
+     */
+    @GetMapping("/{accountId}/servers/instances/{instanceNo}/metrics")
+    public ResponseEntity<NcpServerMetricsResponse> getInstanceMetrics(
+            @PathVariable Long accountId,
+            @PathVariable String instanceNo,
+            @RequestParam(value = "regionCode", required = false) String regionCode,
+            @RequestParam(value = "hours", required = false, defaultValue = "1") Integer hours
+    ) {
+        NcpServerMetricsResponse metrics = serverService.getInstanceMetrics(accountId, instanceNo, regionCode, hours);
+        return ResponseEntity.ok(metrics);
     }
 }

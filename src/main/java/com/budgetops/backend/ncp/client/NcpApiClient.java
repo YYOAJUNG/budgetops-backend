@@ -19,6 +19,7 @@ public class NcpApiClient {
 
     private static final String SERVER_API_BASE_URL = "https://ncloud.apigw.ntruss.com";
     private static final String BILLING_API_BASE_URL = "https://billingapi.apigw.ntruss.com/billing/v1";
+    private static final String CLOUD_INSIGHT_API_BASE_URL = "https://cw.apigw.ntruss.com";
 
     private final NcpSignatureGenerator signatureGenerator;
     private final ObjectMapper objectMapper;
@@ -49,6 +50,21 @@ public class NcpApiClient {
     }
 
     /**
+     * Cloud Insight API 호출 (POST)
+     * Cloud Insight의 QueryData API는 POST 메서드를 사용하며 Request Body로 조회 조건을 전달합니다.
+     *
+     * @param path API 경로 (예: /cw_fea/real/cw/api/data/query)
+     * @param requestBody 요청 본문 (NcpMetricRequest 등)
+     * @param accessKey NCP Access Key
+     * @param secretKey NCP Secret Key
+     * @return API 응답 (JsonNode)
+     */
+    public JsonNode callCloudInsightApi(String path, Object requestBody, String accessKey, String secretKey) {
+        String url = CLOUD_INSIGHT_API_BASE_URL + path;
+        return post(url, null, requestBody, accessKey, secretKey);
+    }
+
+    /**
      * GET 요청
      */
     private JsonNode get(String baseUrl, Map<String, String> params, String accessKey, String secretKey) {
@@ -76,10 +92,11 @@ public class NcpApiClient {
                     new HttpEntity<>(headers),
                     String.class
             );
+            log.debug("NCP API Response received (length: {})", response.getBody() != null ? response.getBody().length() : 0);
             return objectMapper.readTree(response.getBody());
         } catch (HttpStatusCodeException e) {
-            log.error("NCP GET 호출 실패: url={}, status={}, body={}", fullUrl, e.getStatusCode(), e.getResponseBodyAsString());
-            throw new IllegalStateException("NCP API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+            log.error("NCP GET 호출 실패: url={}, status={}", fullUrl, e.getStatusCode());
+            throw new IllegalStateException("NCP API 호출 실패: " + e.getStatusCode(), e);
         } catch (Exception e) {
             log.error("NCP GET 호출 중 알 수 없는 오류: url={}", fullUrl, e);
             throw new IllegalStateException("NCP API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
@@ -115,10 +132,11 @@ public class NcpApiClient {
                     new HttpEntity<>(body, headers),
                     String.class
             );
+            log.debug("NCP API Response received (length: {})", response.getBody() != null ? response.getBody().length() : 0);
             return objectMapper.readTree(response.getBody());
         } catch (HttpStatusCodeException e) {
-            log.error("NCP POST 호출 실패: url={}, status={}, body={}", fullUrl, e.getStatusCode(), e.getResponseBodyAsString());
-            throw new IllegalStateException("NCP API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+            log.error("NCP POST 호출 실패: url={}, status={}", fullUrl, e.getStatusCode());
+            throw new IllegalStateException("NCP API 호출 실패: " + e.getStatusCode(), e);
         } catch (Exception e) {
             log.error("NCP POST 호출 중 알 수 없는 오류: url={}", fullUrl, e);
             throw new IllegalStateException("NCP API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);

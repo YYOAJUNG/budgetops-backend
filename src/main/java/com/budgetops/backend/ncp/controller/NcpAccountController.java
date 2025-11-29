@@ -2,6 +2,7 @@ package com.budgetops.backend.ncp.controller;
 
 import com.budgetops.backend.ncp.dto.NcpAccountCreateRequest;
 import com.budgetops.backend.ncp.dto.NcpAccountResponse;
+import com.budgetops.backend.ncp.dto.NcpCostSummary;
 import com.budgetops.backend.ncp.dto.NcpDailyUsage;
 import com.budgetops.backend.ncp.dto.NcpMonthlyCost;
 import com.budgetops.backend.ncp.entity.NcpAccount;
@@ -10,6 +11,7 @@ import com.budgetops.backend.ncp.service.NcpCostService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -28,7 +30,7 @@ public class NcpAccountController {
      */
     @PostMapping
     public ResponseEntity<?> register(@Valid @RequestBody NcpAccountCreateRequest req) {
-        NcpAccount saved = service.createWithVerify(req);
+        NcpAccount saved = service.createWithVerify(req, getCurrentMemberId());
         // secret은 응답에서 제외: 최소 정보만 반환
         return ResponseEntity.ok(new Object() {
             public final Long id = saved.getId();
@@ -45,7 +47,7 @@ public class NcpAccountController {
      */
     @GetMapping
     public ResponseEntity<?> getActiveAccounts() {
-        return ResponseEntity.ok(service.getActiveAccounts().stream()
+        return ResponseEntity.ok(service.getActiveAccounts(getCurrentMemberId()).stream()
                 .map(this::toResp)
                 .toList());
     }
@@ -55,7 +57,7 @@ public class NcpAccountController {
      */
     @GetMapping("/{accountId}/info")
     public ResponseEntity<NcpAccountResponse> getAccountInfo(@PathVariable Long accountId) {
-        NcpAccount a = service.getAccountInfo(accountId);
+        NcpAccount a = service.getAccountInfo(accountId, getCurrentMemberId());
         return ResponseEntity.ok(toResp(a));
     }
 
@@ -64,7 +66,7 @@ public class NcpAccountController {
      */
     @DeleteMapping("/{accountId}")
     public ResponseEntity<Void> deleteAccount(@PathVariable Long accountId) {
-        service.deactivateAccount(accountId);
+        service.deactivateAccount(accountId, getCurrentMemberId());
         return ResponseEntity.noContent().build();
     }
 
@@ -77,16 +79,25 @@ public class NcpAccountController {
             @RequestParam(required = false) String startMonth,
             @RequestParam(required = false) String endMonth
     ) {
-        // 기본값: 최근 3개월
-        if (startMonth == null) {
-            startMonth = LocalDate.now().minusMonths(2).format(DateTimeFormatter.ofPattern("yyyyMM"));
-        }
-        if (endMonth == null) {
-            endMonth = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM"));
-        }
+        String start = getDefaultMonthIfNull(startMonth, -2);
+        String end = getDefaultMonthIfNull(endMonth, 0);
 
-        List<NcpMonthlyCost> costs = costService.getCosts(accountId, startMonth, endMonth);
+        List<NcpMonthlyCost> costs = costService.getCosts(accountId, getCurrentMemberId(), start, end);
         return ResponseEntity.ok(costs);
+    }
+
+    /**
+     * 특정 계정의 월별 비용 요약 조회
+     */
+    @GetMapping("/{accountId}/costs/summary")
+    public ResponseEntity<NcpCostSummary> getAccountCostSummary(
+            @PathVariable Long accountId,
+            @RequestParam(required = false) String month
+    ) {
+        String targetMonth = getDefaultMonthIfNull(month, 0);
+
+        NcpCostSummary summary = costService.getCostSummary(accountId, getCurrentMemberId(), targetMonth);
+        return ResponseEntity.ok(summary);
     }
 
     /**
@@ -98,16 +109,40 @@ public class NcpAccountController {
             @RequestParam(required = false) String startDay,
             @RequestParam(required = false) String endDay
     ) {
-        // 기본값: 이번 달 1일 ~ 오늘
-        if (startDay == null) {
-            startDay = LocalDate.now().withDayOfMonth(1).format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        }
-        if (endDay == null) {
-            endDay = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        }
+        String start = getDefaultDayIfNull(startDay, true);
+        String end = getDefaultDayIfNull(endDay, false);
 
-        List<NcpDailyUsage> usageList = costService.getDailyUsage(accountId, startDay, endDay);
+        List<NcpDailyUsage> usageList = costService.getDailyUsage(accountId, getCurrentMemberId(), start, end);
         return ResponseEntity.ok(usageList);
+    }
+
+    /**
+     * null인 경우 기본 월(YYYYMM) 반환
+     *
+     * @param month 월 문자열
+     * @param monthOffset 현재 월 기준 오프셋 (음수 가능)
+     * @return YYYYMM 형식 문자열
+     */
+    private String getDefaultMonthIfNull(String month, int monthOffset) {
+        if (month != null) {
+            return month;
+        }
+        return LocalDate.now().plusMonths(monthOffset).format(DateTimeFormatter.ofPattern("yyyyMM"));
+    }
+
+    /**
+     * null인 경우 기본 일(YYYYMMDD) 반환
+     *
+     * @param day 일 문자열
+     * @param isFirstDayOfMonth true면 이번 달 1일, false면 오늘
+     * @return YYYYMMDD 형식 문자열
+     */
+    private String getDefaultDayIfNull(String day, boolean isFirstDayOfMonth) {
+        if (day != null) {
+            return day;
+        }
+        LocalDate date = isFirstDayOfMonth ? LocalDate.now().withDayOfMonth(1) : LocalDate.now();
+        return date.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
     }
 
     /**
@@ -122,5 +157,11 @@ public class NcpAccountController {
                 .secretKeyLast4("****" + a.getSecretKeyLast4())
                 .active(Boolean.TRUE.equals(a.getActive()))
                 .build();
+    }
+
+    private Long getCurrentMemberId() {
+        return (Long) SecurityContextHolder.getContext()
+                .getAuthentication()
+                .getPrincipal();
     }
 }

@@ -149,25 +149,24 @@ public class AzureAlertService {
         
         try {
             // TODO: Azure Monitor API 연동하여 실제 메트릭 조회
-            // 현재는 임시 mock 데이터로 처리
-            double averageValue = 0.0;
-            boolean hasData = false;
+            // 현재는 낮은 사용률 시뮬레이션 (알림 발생 가능하도록)
+            double averageValue;
+            boolean hasData = true;
             
             switch (metric) {
                 case "cpu_utilization":
-                    // 임시: 랜덤 값 (실제로는 Azure Monitor에서 조회)
-                    averageValue = Math.random() * 100;
-                    hasData = true;
+                    // CPU 사용률: 10-45% 사이 랜덤 (40% 임계치 위반 가능)
+                    averageValue = 10 + (Math.random() * 35);
                     break;
                     
                 case "memory_utilization":
-                    averageValue = Math.random() * 100;
-                    hasData = true;
+                    // 메모리 사용률: 15-50% 사이 랜덤
+                    averageValue = 15 + (Math.random() * 35);
                     break;
                     
                 case "network_in":
-                    averageValue = Math.random() * 10;
-                    hasData = true;
+                    // 네트워크 인바운드: 0.1-5 MB 사이 랜덤
+                    averageValue = 0.1 + (Math.random() * 4.9);
                     break;
                     
                 default:
@@ -175,9 +174,8 @@ public class AzureAlertService {
                     return MetricCheckResult.notViolated();
             }
             
-            if (!hasData) {
-                return MetricCheckResult.notViolated();
-            }
+            log.debug("Azure Metric check - VM: {}, Metric: {}, Value: {:.2f}", 
+                    vm.getName(), metric, averageValue);
             
             // 임계값과 비교
             Double threshold = condition.getThresholdAsDouble();
@@ -189,6 +187,8 @@ public class AzureAlertService {
             boolean violated = averageValue < threshold;
             
             if (violated) {
+                log.info("Azure Alert triggered - VM: {}, Metric: {}, Current: {:.2f}, Threshold: {:.2f}", 
+                        vm.getName(), metric, averageValue, threshold);
                 return MetricCheckResult.violated(averageValue, threshold);
             } else {
                 return MetricCheckResult.notViolated();
