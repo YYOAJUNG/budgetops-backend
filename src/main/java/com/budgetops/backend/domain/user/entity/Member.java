@@ -43,4 +43,11 @@ public class Member {
 
     @Column(name = "budget_alert_triggered_at")
     private LocalDateTime budgetAlertTriggeredAt;
+
+    @Column(name = "slack_webhook_url", length = 2048)
+    private String slackWebhookUrl;
+
+    @Column(name = "slack_notifications_enabled")
+    @Builder.Default
+    private Boolean slackNotificationsEnabled = Boolean.FALSE;
 }

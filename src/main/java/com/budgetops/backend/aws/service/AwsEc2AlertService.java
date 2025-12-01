@@ -21,6 +21,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.util.StringUtils;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
@@ -35,6 +36,8 @@ public class AwsEc2AlertService {
     private final AwsAccountRepository accountRepository;
     private final AwsEc2Service ec2Service;
     private final AwsEc2RuleLoader ruleLoader;
+    private final com.budgetops.backend.domain.user.repository.MemberRepository memberRepository;
+    private final com.budgetops.backend.notification.service.SlackNotificationService slackNotificationService;
     
     /**
      * 모든 활성 AWS 계정의 EC2 인스턴스에 대해 임계치 확인 및 알림 발송
@@ -332,20 +335,32 @@ public class AwsEc2AlertService {
      */
     private void sendAlert(AwsEc2Alert alert) {
         try {
-            // 현재는 로그로만 발송 (나중에 이메일, 웹훅 등으로 확장 가능)
             log.warn("🚨 AWS EC2 Alert: {}", alert.getMessage());
             
             // 알림 상태 업데이트
             alert.setStatus(AwsEc2Alert.AlertStatus.SENT);
             alert.setSentAt(LocalDateTime.now());
-            
-            // TODO: 실제 알림 발송 로직 (이메일, 슬랙, 웹훅 등)
-            // - 이메일 발송
-            // - Slack 웹훅
-            // - 데이터베이스 저장
+
+            // Slack 알림 발송
+            notifySlackSubscribers(alert);
             
         } catch (Exception e) {
             log.error("Failed to send alert: {}", alert.getMessage(), e);
+        }
+    }
+
+    private void notifySlackSubscribers(AwsEc2Alert alert) {
+        List<com.budgetops.backend.domain.user.entity.Member> subscribers = 
+                memberRepository.findAllBySlackNotificationsEnabledTrueAndSlackWebhookUrlIsNotNull();
+        if (subscribers.isEmpty()) {
+            return;
+        }
+
+        for (com.budgetops.backend.domain.user.entity.Member member : subscribers) {
+            if (!org.springframework.util.StringUtils.hasText(member.getSlackWebhookUrl())) {
+                continue;
+            }
+            slackNotificationService.sendEc2Alert(member.getSlackWebhookUrl(), alert);
         }
     }
     
