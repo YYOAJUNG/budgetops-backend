@@ -1,7 +1,7 @@
 package com.budgetops.backend.ncp.entity;
 
 import com.budgetops.backend.aws.support.CryptoStringConverter;
-import com.budgetops.backend.billing.entity.Member;
+import com.budgetops.backend.domain.user.entity.Member;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

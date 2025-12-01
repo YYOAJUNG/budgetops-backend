@@ -2,6 +2,9 @@ spring:
   application:
     name: budgetops-backend
 
+  profiles:
+    default: local
+
   security:
     oauth2:
       client:
@@ -9,7 +12,9 @@ spring:
           google:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
-            scope: [email, profile]
+            scope:
+              - email
+              - profile
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
         provider:
           google:
@@ -28,10 +33,21 @@ management:
 
 jwt:
   secret: ${JWT_SECRET}
-  token-validity-in-seconds: 86400
+  token-validity-in-seconds: 86400 # 24시간
 
 app:
+  # 기본 리다리엑트(배포용 도메인)
   oauth2:
-    # 기본값 (로컬 Next.js가 이걸 받을 거라고 가정)
-    redirect-uri: https://budgetops.work/oauth/callback
+    redirect-uri: ${FRONTEND_URL}/oauth/callback
+
+iamport:
+  api:
+    key: ${IAMPORT_API_KEY}
+    secret: ${IAMPORT_API_SECRET}
+
+gemini:
+  api:
+    key: ${GEMINI_API_KEY:}
+  model:
+    name: ${GEMINI_MODEL_NAME:gemini-2.5-flash}
 

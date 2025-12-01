@@ -1,92 +1,181 @@
 package com.budgetops.backend.gcp.service;
 
 import com.budgetops.backend.gcp.dto.*;
+import com.budgetops.backend.domain.user.entity.Member;
+import com.budgetops.backend.domain.user.repository.MemberRepository;
 import com.google.auth.oauth2.ServiceAccountCredentials;
 import com.budgetops.backend.gcp.entity.GcpAccount;
 import com.budgetops.backend.gcp.repository.GcpAccountRepository;
+import com.budgetops.backend.gcp.repository.GcpResourceRepository;
 import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.BigQueryOptions;
 import com.google.cloud.bigquery.Dataset;
 import com.google.cloud.bigquery.DatasetId;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class GcpAccountService {
 
-    private static class TempState {
-        private String serviceAccountId;
-        private String serviceAccountKeyJson;
-        private String billingAccountId;
-    }
-
-    private final AtomicReference<TempState> tempStateRef = new AtomicReference<>(new TempState());
     private final GcpServiceAccountVerifier serviceAccountVerifier;
     private final GcpBillingAccountVerifier billingVerifier;
     private final GcpAccountRepository gcpAccountRepository;
+    private final GcpResourceRepository gcpResourceRepository;
+    private final MemberRepository memberRepository;
 
-    public GcpAccountService(GcpServiceAccountVerifier serviceAccountVerifier,
-                             GcpBillingAccountVerifier billingVerifier,
-                             GcpAccountRepository gcpAccountRepository) {
-        this.serviceAccountVerifier = serviceAccountVerifier;
-        this.billingVerifier = billingVerifier;
-        this.gcpAccountRepository = gcpAccountRepository;
-    }
-
-    public void setServiceAccountId(ServiceAccountIdRequest request) {
-        TempState s = tempStateRef.get();
-        s.serviceAccountId = request.getServiceAccountId();
-    }
-
-    public void setServiceAccountKeyJson(ServiceAccountKeyUploadRequest request) {
-        // 파싱 유효성 점검. 실패 시 예외 발생(Controller에서 400 처리)
-        ServiceAccountCredentials credentials = GcpCredentialParser.parse(request.getServiceAccountKeyJson());
-        
-        TempState s = tempStateRef.get();
-        s.serviceAccountKeyJson = request.getServiceAccountKeyJson();
-    }
-
-    public ServiceAccountTestResponse testServiceAccount() {
-        TempState s = tempStateRef.get();
-        return serviceAccountVerifier.verifyServiceAccount(s.serviceAccountId, s.serviceAccountKeyJson);
-    }
-
-    public void setBillingAccountId(BillingAccountIdRequest request) {
-        String billingIdRaw = request.getBillingAccountId();
-        if (billingIdRaw == null) {
-            throw new IllegalArgumentException("잘못된 결제 계정 ID 형식입니다. 예) EXAMPL-123456-ABC123");
+    public ServiceAccountTestResponse testServiceAccount(ServiceAccountTestRequest request) {
+        if (request.getServiceAccountId() == null || request.getServiceAccountId().isBlank()) {
+            throw new IllegalArgumentException("서비스 계정 ID가 필요합니다.");
         }
+        if (request.getServiceAccountKeyJson() == null || request.getServiceAccountKeyJson().isBlank()) {
+            throw new IllegalArgumentException("서비스 계정 키 JSON이 필요합니다.");
+        }
+        
+        // 파싱 유효성 점검
+        GcpCredentialParser.parse(request.getServiceAccountKeyJson());
+        
+        return serviceAccountVerifier.verifyServiceAccount(
+            request.getServiceAccountId(), 
+            request.getServiceAccountKeyJson()
+        );
+    }
+
+    public BillingTestResponse testBilling(BillingAccountTestRequest request) {
+        if (request.getBillingAccountId() == null || request.getBillingAccountId().isBlank()) {
+            throw new IllegalArgumentException("빌링 계정 ID가 필요합니다.");
+        }
+        if (request.getServiceAccountKeyJson() == null || request.getServiceAccountKeyJson().isBlank()) {
+            throw new IllegalArgumentException("서비스 계정 키 JSON이 필요합니다.");
+        }
+        
+        // 빌링 계정 ID 형식 검증
+        String billingIdRaw = request.getBillingAccountId();
         String billingId = billingIdRaw.trim().toUpperCase();
         Pattern pattern = Pattern.compile("^[A-Z0-9]{6}-[A-Z0-9]{6}-[A-Z0-9]{6}$");
         if (!pattern.matcher(billingId).matches()) {
             throw new IllegalArgumentException("잘못된 결제 계정 ID 형식입니다. 예) EXAMPL-123456-ABC123");
         }
-
-        TempState s = tempStateRef.get();
-        s.billingAccountId = billingId;
+        
+        // 파싱 유효성 점검
+        GcpCredentialParser.parse(request.getServiceAccountKeyJson());
+        
+        return billingVerifier.verifyBilling(billingId, request.getServiceAccountKeyJson());
     }
 
-    public BillingTestResponse testBilling() {
-        TempState s = tempStateRef.get();
-        return billingVerifier.verifyBilling(s.billingAccountId, s.serviceAccountKeyJson);
+    public TestIntegrationResponse testIntegration(TestIntegrationRequest request) {
+        TestIntegrationResponse response = new TestIntegrationResponse();
+        
+        // 필수 필드 검증
+        if (request.getServiceAccountId() == null || request.getServiceAccountId().isBlank()) {
+            throw new IllegalArgumentException("서비스 계정 ID가 필요합니다.");
+        }
+        if (request.getServiceAccountKeyJson() == null || request.getServiceAccountKeyJson().isBlank()) {
+            throw new IllegalArgumentException("서비스 계정 키 JSON이 필요합니다.");
+        }
+        
+        // 파싱 유효성 점검
+        GcpCredentialParser.parse(request.getServiceAccountKeyJson());
+        
+        // 1. 서비스 계정 테스트
+        ServiceAccountTestResponse serviceAccountResult = serviceAccountVerifier.verifyServiceAccount(
+            request.getServiceAccountId(),
+            request.getServiceAccountKeyJson()
+        );
+        
+        TestIntegrationResponse.ServiceAccountTestResult serviceAccountTest = 
+            new TestIntegrationResponse.ServiceAccountTestResult();
+        serviceAccountTest.setOk(serviceAccountResult.isOk());
+        serviceAccountTest.setMissingRoles(serviceAccountResult.getMissingRoles());
+        serviceAccountTest.setMessage(serviceAccountResult.getMessage());
+        serviceAccountTest.setHttpStatus(serviceAccountResult.getHttpStatus());
+        serviceAccountTest.setDebugBodySnippet(serviceAccountResult.getDebugBodySnippet());
+        serviceAccountTest.setGrantedPermissions(serviceAccountResult.getGrantedPermissions());
+        response.setServiceAccount(serviceAccountTest);
+        
+        // 2. 빌링 계정 테스트 (선택적)
+        TestIntegrationResponse.BillingTestResult billingTest = 
+            new TestIntegrationResponse.BillingTestResult();
+        
+        if (request.getBillingAccountId() != null && !request.getBillingAccountId().isBlank()) {
+            // 빌링 계정 ID 형식 검증
+            String billingIdRaw = request.getBillingAccountId();
+            String billingId = billingIdRaw.trim().toUpperCase();
+            Pattern pattern = Pattern.compile("^[A-Z0-9]{6}-[A-Z0-9]{6}-[A-Z0-9]{6}$");
+            if (!pattern.matcher(billingId).matches()) {
+                billingTest.setOk(false);
+                billingTest.setDatasetExists(false);
+                billingTest.setLatestTable(null);
+                billingTest.setMessage("잘못된 결제 계정 ID 형식입니다. 예) EXAMPL-123456-ABC123");
+            } else {
+                BillingTestResponse billingResult = billingVerifier.verifyBilling(
+                    billingId, 
+                    request.getServiceAccountKeyJson()
+                );
+                billingTest.setOk(billingResult.isOk());
+                billingTest.setDatasetExists(billingResult.isDatasetExists());
+                billingTest.setLatestTable(billingResult.getLatestTable());
+                billingTest.setMessage(billingResult.getMessage());
+            }
+        } else {
+            // 빌링 계정 ID가 없으면 테스트하지 않음
+            billingTest.setOk(false);
+            billingTest.setDatasetExists(false);
+            billingTest.setLatestTable(null);
+            billingTest.setMessage("빌링 계정 ID가 제공되지 않아 테스트를 건너뜁니다.");
+        }
+        response.setBilling(billingTest);
+        
+        // 전체 결과 설정
+        boolean overallOk = serviceAccountTest.isOk() && 
+            (request.getBillingAccountId() == null || request.getBillingAccountId().isBlank() || billingTest.isOk());
+        response.setOk(overallOk);
+        
+        if (overallOk) {
+            if (request.getBillingAccountId() != null && !request.getBillingAccountId().isBlank()) {
+                response.setMessage("서비스 계정 및 빌링 계정 테스트 성공");
+            } else {
+                response.setMessage("서비스 계정 테스트 성공");
+            }
+        } else {
+            StringBuilder msg = new StringBuilder();
+            if (!serviceAccountTest.isOk()) {
+                msg.append("서비스 계정 테스트 실패");
+            }
+            if (request.getBillingAccountId() != null && !request.getBillingAccountId().isBlank() && !billingTest.isOk()) {
+                if (msg.length() > 0) msg.append(", ");
+                msg.append("빌링 계정 테스트 실패");
+            }
+            response.setMessage(msg.toString());
+        }
+        
+        return response;
     }
 
-    public SaveIntegrationResponse saveIntegration() {
-        TempState s = tempStateRef.get();
+    public SaveIntegrationResponse saveIntegration(SaveIntegrationRequest request, Long memberId) {
         SaveIntegrationResponse res = new SaveIntegrationResponse();
-        if (s.serviceAccountId == null || s.serviceAccountKeyJson == null) {
+        
+        if (request.getServiceAccountId() == null || request.getServiceAccountId().isBlank()) {
             res.setOk(false);
-            res.setMessage("서비스 계정 정보가 없습니다. 이전 단계를 완료해주세요.");
+            res.setMessage("서비스 계정 ID가 필요합니다.");
+            return res;
+        }
+        if (request.getServiceAccountKeyJson() == null || request.getServiceAccountKeyJson().isBlank()) {
+            res.setOk(false);
+            res.setMessage("서비스 계정 키 JSON이 필요합니다.");
             return res;
         }
         try {
-            ServiceAccountCredentials credentials = GcpCredentialParser.parse(s.serviceAccountKeyJson);
+            Member member = getMemberOrThrow(memberId);
+            ServiceAccountCredentials credentials = GcpCredentialParser.parse(request.getServiceAccountKeyJson());
             String projectId = credentials.getProjectId();
 
             // BigQuery dataset 위치 확인 (있으면 함께 저장)
@@ -108,21 +197,63 @@ public class GcpAccountService {
                 // 권한/구성이 아직 안되었을 수 있으므로 무시하고 계속 저장
             }
 
+            // 빌링 계정 ID 형식 검증 및 정규화
+            String billingAccountId = null;
+            if (request.getBillingAccountId() != null && !request.getBillingAccountId().isBlank()) {
+                String billingIdRaw = request.getBillingAccountId();
+                String billingId = billingIdRaw.trim().toUpperCase();
+                Pattern pattern = Pattern.compile("^[A-Z0-9]{6}-[A-Z0-9]{6}-[A-Z0-9]{6}$");
+                if (!pattern.matcher(billingId).matches()) {
+                    res.setOk(false);
+                    res.setMessage("잘못된 결제 계정 ID 형식입니다. 예) EXAMPL-123456-ABC123");
+                    return res;
+                }
+                billingAccountId = billingId;
+            }
+
+            // 서비스 계정 ID 중복 체크
+            java.util.Optional<GcpAccount> existingAccount = gcpAccountRepository.findByServiceAccountId(request.getServiceAccountId());
+            if (existingAccount.isPresent()) {
+                GcpAccount account = existingAccount.get();
+                Long previousOwnerId = account.getOwner() != null ? account.getOwner().getId() : null;
+                if (previousOwnerId != null && !previousOwnerId.equals(memberId)) {
+                    log.info("Reassigning GCP account {} from member {} to {}", account.getId(), previousOwnerId, memberId);
+                }
+
+                account.setOwner(member);
+                account.setName(request.getName());
+                account.setProjectId(projectId);
+                account.setBillingAccountId(billingAccountId);
+                account.setBillingExportDatasetId(datasetIdStr);
+                account.setBillingExportLocation(datasetLocation);
+                account.setEncryptedServiceAccountKey(request.getServiceAccountKeyJson());
+
+                GcpAccount saved = gcpAccountRepository.save(account);
+
+                res.setOk(true);
+                res.setId(saved.getId());
+                res.setName(saved.getName());
+                res.setServiceAccountId(saved.getServiceAccountId());
+                res.setProjectId(saved.getProjectId());
+                res.setMessage("Integration updated");
+                return res;
+            }
+
             GcpAccount entity = new GcpAccount();
-            entity.setServiceAccountId(s.serviceAccountId);
+            entity.setName(request.getName());
+            entity.setServiceAccountId(request.getServiceAccountId());
             entity.setProjectId(projectId);
-            entity.setBillingAccountId(s.billingAccountId);
+            entity.setBillingAccountId(billingAccountId);
             entity.setBillingExportDatasetId(datasetIdStr);
             entity.setBillingExportLocation(datasetLocation);
-            entity.setEncryptedServiceAccountKey(s.serviceAccountKeyJson);
+            entity.setEncryptedServiceAccountKey(request.getServiceAccountKeyJson());
+            entity.setOwner(member);
 
             GcpAccount saved = gcpAccountRepository.save(entity);
 
-            // 완료 후 임시 상태 초기화
-            tempStateRef.set(new TempState());
-
             res.setOk(true);
             res.setId(saved.getId());
+            res.setName(saved.getName());
             res.setServiceAccountId(saved.getServiceAccountId());
             res.setProjectId(saved.getProjectId());
             res.setMessage("Integration saved");
@@ -138,22 +269,31 @@ public class GcpAccountService {
         }
     }
 
-    public List<GcpAccountResponse> listAccounts() {
-        return gcpAccountRepository.findAll().stream()
+    public List<GcpAccountResponse> listAccounts(Long memberId) {
+        getMemberOrThrow(memberId);
+        return gcpAccountRepository.findByOwnerId(memberId).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
 
     @Transactional
-    public void deleteAccount(Long id) {
-        GcpAccount account = gcpAccountRepository.findById(id)
+    public void deleteAccount(Long id, Long memberId) {
+        GcpAccount account = gcpAccountRepository.findByIdAndOwnerId(id, memberId)
                 .orElseThrow(() -> new IllegalArgumentException("GCP 계정을 찾을 수 없습니다."));
+        
+        // 계정에 연결된 모든 리소스를 먼저 삭제 (외래키 제약조건 해결)
+        gcpResourceRepository.findByGcpAccountId(id).forEach(resource -> {
+            gcpResourceRepository.delete(resource);
+        });
+        
+        // 리소스 삭제 후 계정 삭제
         gcpAccountRepository.delete(account);
     }
 
     private GcpAccountResponse toResponse(GcpAccount account) {
         GcpAccountResponse response = new GcpAccountResponse();
         response.setId(account.getId());
+        response.setName(account.getName());
         response.setProjectId(account.getProjectId());
         response.setCreatedAt(account.getCreatedAt());
 
@@ -169,6 +309,12 @@ public class GcpAccountService {
 
         return response;
     }
+
+    private Member getMemberOrThrow(Long memberId) {
+        return memberRepository.findById(memberId)
+                .orElseThrow(() -> new IllegalArgumentException("Member를 찾을 수 없습니다: " + memberId));
+    }
+
 }
 
 

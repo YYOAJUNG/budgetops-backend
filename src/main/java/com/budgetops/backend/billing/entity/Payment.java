@@ -1,7 +1,7 @@
 package com.budgetops.backend.billing.entity;
 
 import com.budgetops.backend.billing.enums.PaymentStatus;
-import com.budgetops.backend.billing.entity.Member;
+import com.budgetops.backend.domain.user.entity.Member;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;

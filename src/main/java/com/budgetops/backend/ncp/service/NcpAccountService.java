@@ -1,7 +1,7 @@
 package com.budgetops.backend.ncp.service;
 
-import com.budgetops.backend.billing.entity.Member;
-import com.budgetops.backend.billing.repository.MemberRepository;
+import com.budgetops.backend.domain.user.entity.Member;
+import com.budgetops.backend.domain.user.repository.MemberRepository;
 import com.budgetops.backend.ncp.dto.NcpAccountCreateRequest;
 import com.budgetops.backend.ncp.entity.NcpAccount;
 import com.budgetops.backend.ncp.repository.NcpAccountRepository;
