@@ -1,6 +1,7 @@
 package com.budgetops.backend.billing.dto.response;
 
 import com.budgetops.backend.billing.constants.DateConstants;
+import com.budgetops.backend.billing.constants.TokenConstants;
 import com.budgetops.backend.billing.entity.Billing;
 import com.budgetops.backend.billing.enums.BillingPlan;
 import lombok.AllArgsConstructor;
@@ -60,7 +61,7 @@ public class BillingResponse {
 
                 // 토큰/할당량 정보
                 .currentTokens(billing.getCurrentTokens())
-                .maxTokens(plan.getAiAssistantQuota())
+                .maxTokens(plan.isFree() ? TokenConstants.FREE_PLAN_MAX_TOKENS : TokenConstants.MAX_TOKEN_LIMIT)
                 .tokenResetDate(billing.getNextBillingDate() != null
                     ? billing.getNextBillingDate().format(DateConstants.DATE_FORMAT)
                     : null)

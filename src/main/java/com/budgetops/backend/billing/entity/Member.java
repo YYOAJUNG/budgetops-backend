@@ -5,6 +5,7 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -49,4 +50,13 @@ public class Member {
     @UpdateTimestamp
     @Column(nullable = false)
     private LocalDateTime updatedAt;
+
+    @Column(name = "monthly_budget_limit", precision = 19, scale = 2)
+    private BigDecimal monthlyBudgetLimit;
+
+    @Column(name = "budget_alert_threshold")
+    private Integer budgetAlertThreshold;
+
+    @Column(name = "budget_alert_triggered_at")
+    private LocalDateTime budgetAlertTriggeredAt;
 }

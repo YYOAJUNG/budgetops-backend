@@ -32,8 +32,13 @@ public class BillingController {
     @GetMapping
     public ResponseEntity<BillingResponse> getBilling(@PathVariable Long userId) {
         Member member = getMemberById(userId);
+
+        // Billing 데이터가 없으면 자동으로 초기화
         Billing billing = billingService.getBillingByMember(member)
-                .orElseThrow(BillingNotFoundException::new);
+                .orElseGet(() -> {
+                    log.warn("Billing not found for user {}, initializing...", userId);
+                    return billingService.initializeBilling(member);
+                });
 
         log.info("요금제 조회: userId={}, plan={}", userId, billing.getCurrentPlan());
         return ResponseEntity.ok(BillingResponse.from(billing));
@@ -48,6 +53,14 @@ public class BillingController {
             @PathVariable String planName
     ) {
         Member member = getMemberById(userId);
+
+        // Billing 데이터가 없으면 먼저 초기화
+        billingService.getBillingByMember(member)
+                .orElseGet(() -> {
+                    log.warn("Billing not found for user {}, initializing before plan change...", userId);
+                    return billingService.initializeBilling(member);
+                });
+
         Billing billing = billingService.changePlan(member, planName);
 
         log.info("요금제 변경 완료: userId={}, newPlan={}, price={}",
