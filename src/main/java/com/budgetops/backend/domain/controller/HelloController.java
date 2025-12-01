@@ -1,4 +1,5 @@
-package com.budgetops.backend.domain.controller;
+
+package com.budgetops.backend;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;

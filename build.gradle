@@ -18,17 +18,16 @@ java {
 repositories {
 	mavenCentral()
 	maven { url 'https://jitpack.io' }
-	flatDir { dirs 'libs' }
 }
 
 dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter-actuator'	
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
-	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0'
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
 	implementation 'software.amazon.awssdk:sts:2.25.65'
 	implementation 'software.amazon.awssdk:ec2:2.25.65'
 	implementation 'software.amazon.awssdk:cloudwatch:2.25.65'
@@ -51,22 +50,16 @@ dependencies {
 	implementation 'com.google.auth:google-auth-library-oauth2-http:1.40.0'
 	implementation 'com.google.cloud:google-cloud-bigquery:2.38.0'
 	implementation 'com.google.cloud:google-cloud-monitoring:3.22.0'
-    implementation 'com.google.apis:google-api-services-iam:v1-rev20251010-2.0.0'
+  implementation 'com.google.apis:google-api-services-iam:v1-rev20251010-2.0.0'
 	implementation 'com.google.cloud:google-cloud-asset:3.82.0'
 
 	// Iamport (PortOne) 결제
-	implementation 'com.github.iamport:iamport-rest-client-java:0.2.20'
+	implementation 'com.github.iamport:iamport-rest-client-java:0.2.21'
 
 	// JWT
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
-	
-	// YAML 파싱
-	implementation 'org.yaml:snakeyaml:2.2'
-	
-	// HTTP Client for Gemini API
-	implementation 'org.springframework.boot:spring-boot-starter-webflux'
 }
 
 tasks.named('test') {
@@ -80,7 +73,7 @@ tasks.named('bootRun') {
 		def dotenvFile = file('.env')
 		if (dotenvFile.exists()) {
 			// 로드할 환경변수 목록 (Spring 설정과 충돌하지 않는 것만)
-			def allowedKeys = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'JWT_SECRET', 'APP_CRED_KEY', 'IAMPORT_API_KEY', 'IAMPORT_API_SECRET']
+			def allowedKeys = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'JWT_SECRET', 'APP_CRED_KEY']
 
 			dotenvFile.readLines().each { line ->
 				if (line && !line.startsWith('#') && line.contains('=')) {

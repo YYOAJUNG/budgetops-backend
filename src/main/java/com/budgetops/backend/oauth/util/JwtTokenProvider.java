@@ -1,6 +1,5 @@
 package com.budgetops.backend.oauth.util;
 
-import com.budgetops.backend.domain.user.entity.Member;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -29,17 +28,19 @@ public class JwtTokenProvider {
     }
 
     /**
-     * Member로부터 JWT 토큰 생성 (memberId를 subject로 사용)
+     * OAuth2User로부터 JWT 토큰 생성
      */
-    public String createToken(Member member) {
+    public String createToken(OAuth2User oAuth2User) {
+        String email = oAuth2User.getAttribute("email");
+        String name = oAuth2User.getAttribute("name");
+
         Date now = new Date();
         Date validity = new Date(now.getTime() + tokenValidityInMilliseconds);
 
         return Jwts.builder()
-                .subject(member.getId().toString())  // memberId를 subject로
-                .claim("memberId", member.getId())
-                .claim("email", member.getEmail())
-                .claim("name", member.getName())
+                .subject(email)
+                .claim("name", name)
+                .claim("email", email)
                 .issuedAt(now)
                 .expiration(validity)
                 .signWith(key)
@@ -47,19 +48,16 @@ public class JwtTokenProvider {
     }
 
     /**
-     * JWT 토큰에서 memberId 추출
-     */
-    public Long getMemberIdFromToken(String token) {
-        Claims claims = getClaims(token);
-        return Long.parseLong(claims.getSubject());
-    }
-
-    /**
      * JWT 토큰에서 사용자 이메일 추출
      */
     public String getEmailFromToken(String token) {
-        Claims claims = getClaims(token);
-        return claims.get("email", String.class);
+        Claims claims = Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+
+        return claims.getSubject();
     }
 
     /**

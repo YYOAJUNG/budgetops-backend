@@ -41,6 +41,4 @@ out/
 
 .DS_Store
 gcp_test.json
-
-# H2 Database files
 data/

@@ -3,9 +3,14 @@ package com.budgetops.backend.aws.service;
 import com.budgetops.backend.aws.dto.*;
 import com.budgetops.backend.aws.entity.AwsAccount;
 import com.budgetops.backend.aws.repository.AwsAccountRepository;
+import com.budgetops.backend.billing.entity.Member;
+import com.budgetops.backend.billing.repository.MemberRepository;
+import com.budgetops.backend.notification.service.SlackNotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -35,10 +40,13 @@ public class AwsEc2AlertService {
     private final AwsAccountRepository accountRepository;
     private final AwsEc2Service ec2Service;
     private final AwsEc2RuleLoader ruleLoader;
+    private final MemberRepository memberRepository;
+    private final SlackNotificationService slackNotificationService;
     
     /**
      * 모든 활성 AWS 계정의 EC2 인스턴스에 대해 임계치 확인 및 알림 발송
      */
+    @Transactional(readOnly = true)
     public List<AwsEc2Alert> checkAllAccounts() {
         List<AwsAccount> activeAccounts = accountRepository.findByActiveTrue();
         log.info("Checking thresholds for {} active AWS account(s)", activeAccounts.size());
@@ -61,6 +69,7 @@ public class AwsEc2AlertService {
     /**
      * 특정 AWS 계정의 EC2 인스턴스에 대해 임계치 확인 및 알림 발송
      */
+    @Transactional(readOnly = true)
     public List<AwsEc2Alert> checkAccount(Long accountId) {
         AwsAccount account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
@@ -338,14 +347,25 @@ public class AwsEc2AlertService {
             // 알림 상태 업데이트
             alert.setStatus(AwsEc2Alert.AlertStatus.SENT);
             alert.setSentAt(LocalDateTime.now());
-            
-            // TODO: 실제 알림 발송 로직 (이메일, 슬랙, 웹훅 등)
-            // - 이메일 발송
-            // - Slack 웹훅
-            // - 데이터베이스 저장
+
+            notifySlackSubscribers(alert);
             
         } catch (Exception e) {
             log.error("Failed to send alert: {}", alert.getMessage(), e);
+        }
+    }
+
+    private void notifySlackSubscribers(AwsEc2Alert alert) {
+        List<Member> subscribers = memberRepository.findBySlackNotificationsEnabledTrueAndSlackWebhookUrlIsNotNull();
+        if (subscribers.isEmpty()) {
+            return;
+        }
+
+        for (Member member : subscribers) {
+            if (!StringUtils.hasText(member.getSlackWebhookUrl())) {
+                continue;
+            }
+            slackNotificationService.sendEc2Alert(member.getSlackWebhookUrl(), alert);
         }
     }
     
