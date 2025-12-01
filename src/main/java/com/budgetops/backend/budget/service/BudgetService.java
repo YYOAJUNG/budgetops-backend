@@ -111,35 +111,96 @@ public class BudgetService {
     }
 
     @Transactional
-    public Optional<BudgetAlertResponse> checkAlert(Long memberId) {
+    public List<BudgetAlertResponse> checkAlerts(Long memberId) {
         Member member = getMember(memberId);
         UsageComputation computation = computeUsage(member);
         BudgetUsageResponse usage = computation.usage();
         resetAlertIfNewMonth(member, usage.month());
 
-        if (!usage.thresholdReached()) {
-            return Optional.empty();
+        List<BudgetAlertResponse> alerts = new java.util.ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        // 1) 통합 예산 알림
+        if (usage.thresholdReached() && !alreadyTriggeredThisMonth(member, usage.month())) {
+            member.setBudgetAlertTriggeredAt(now);
+            memberRepository.save(member);
+            log.info("Consolidated budget alert triggered for member {} usage={}%", memberId, usage.usagePercentage());
+
+            alerts.add(new BudgetAlertResponse(
+                    "CONSOLIDATED",
+                    null,
+                    null,
+                    null,
+                    usage.monthlyBudgetLimit(),
+                    usage.currentMonthCost(),
+                    usage.usagePercentage(),
+                    usage.alertThreshold() == null ? 0 : usage.alertThreshold(),
+                    usage.month(),
+                    usage.currency(),
+                    member.getBudgetAlertTriggeredAt(),
+                    buildAlertMessage(usage)
+            ));
         }
 
-        if (alreadyTriggeredThisMonth(member, usage.month())) {
-            return Optional.empty();
+        // 2) 계정별 예산 알림
+        List<MemberAccountBudget> budgets = budgetSettingsFor(member);
+        if (!budgets.isEmpty() && usage.accountUsages() != null) {
+            var budgetMap = budgets.stream().collect(
+                    java.util.stream.Collectors.toMap(
+                            b -> key(b.getProvider(), b.getAccountId()),
+                            b -> b
+                    )
+            );
+
+            List<MemberAccountBudget> changed = new java.util.ArrayList<>();
+
+            for (BudgetUsageResponse.AccountUsage accountUsage : usage.accountUsages()) {
+                String provider = accountUsage.provider();
+                Long accountId = accountUsage.accountId();
+                String mapKey = key(provider, accountId);
+                MemberAccountBudget budget = budgetMap.get(mapKey);
+                if (budget == null) {
+                    continue;
+                }
+
+                Integer accountThreshold = budget.getAlertThreshold();
+                if (accountThreshold == null || accountThreshold <= 0) {
+                    continue;
+                }
+
+                if (!accountUsage.thresholdReached()) {
+                    continue;
+                }
+
+                if (accountAlertAlreadyTriggeredThisMonth(budget, usage.month())) {
+                    continue;
+                }
+
+                budget.setAlertTriggeredAt(now);
+                changed.add(budget);
+
+                alerts.add(new BudgetAlertResponse(
+                        "ACCOUNT_SPECIFIC",
+                        provider,
+                        accountId,
+                        accountUsage.accountName(),
+                        accountUsage.monthlyBudgetLimit(),
+                        accountUsage.currentMonthCost(),
+                        accountUsage.usagePercentage(),
+                        accountThreshold,
+                        usage.month(),
+                        accountUsage.currency(),
+                        budget.getAlertTriggeredAt(),
+                        buildAccountAlertMessage(accountUsage, accountThreshold)
+                ));
+            }
+
+            if (!changed.isEmpty()) {
+                memberAccountBudgetRepository.saveAll(changed);
+            }
         }
 
-        member.setBudgetAlertTriggeredAt(LocalDateTime.now());
-        memberRepository.save(member);
-        log.info("Budget alert triggered for member {} usage={}%", memberId, usage.usagePercentage());
-
-        BudgetAlertResponse response = new BudgetAlertResponse(
-                usage.monthlyBudgetLimit(),
-                usage.currentMonthCost(),
-                usage.usagePercentage(),
-                usage.alertThreshold() == null ? 0 : usage.alertThreshold(),
-                usage.month(),
-                usage.currency(),
-                member.getBudgetAlertTriggeredAt(),
-                buildAlertMessage(usage)
-        );
-        return Optional.of(response);
+        return alerts;
     }
 
     private UsageComputation computeUsage(Member member) {
@@ -201,6 +262,14 @@ public class BudgetService {
         return triggeredMonth.equals(currentMonth);
     }
 
+    private boolean accountAlertAlreadyTriggeredThisMonth(MemberAccountBudget budget, String currentMonth) {
+        if (budget.getAlertTriggeredAt() == null) {
+            return false;
+        }
+        String triggeredMonth = budget.getAlertTriggeredAt().format(MONTH_KEY);
+        return triggeredMonth.equals(currentMonth);
+    }
+
     private Member getMember(Long memberId) {
         return memberRepository.findById(memberId)
                 .orElseThrow(() -> new IllegalArgumentException("Member not found: " + memberId));
@@ -217,6 +286,16 @@ public class BudgetService {
             BudgetUsageResponse usage,
             CloudCostAggregator.CloudCostSnapshot snapshot
     ) {
+    }
+
+    private String buildAccountAlertMessage(BudgetUsageResponse.AccountUsage usage, int threshold) {
+        return String.format(
+                "[%s #%d] 이번 달 비용이 계정별 예산의 %.1f%%에 도달했습니다. (임계값 %d%%)",
+                usage.provider(),
+                usage.accountId(),
+                usage.usagePercentage(),
+                threshold
+        );
     }
 
     /**

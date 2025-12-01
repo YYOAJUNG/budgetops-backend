@@ -65,6 +65,12 @@ public class MemberAccountBudget {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    /**
+     * 마지막으로 계정별 예산 알림이 트리거된 시각
+     */
+    @Column(name = "alert_triggered_at")
+    private LocalDateTime alertTriggeredAt;
 }
 
 
