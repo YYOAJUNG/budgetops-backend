@@ -158,6 +158,9 @@ public class BudgetService {
 
         boolean thresholdReached = threshold != null && threshold > 0 && usagePercentage >= threshold;
 
+        // 계정별 사용량 계산
+        List<BudgetUsageResponse.AccountUsage> accountUsages = buildAccountUsages(member.getId(), snapshot, budgetSettingsFor(member));
+
         BudgetUsageResponse usageResponse = new BudgetUsageResponse(
                 budget,
                 threshold,
@@ -165,7 +168,8 @@ public class BudgetService {
                 usagePercentage,
                 thresholdReached,
                 snapshot.month(),
-                "KRW"
+                "KRW",
+                accountUsages
         );
         return new UsageComputation(usageResponse, snapshot);
     }
@@ -213,6 +217,75 @@ public class BudgetService {
             BudgetUsageResponse usage,
             CloudCostAggregator.CloudCostSnapshot snapshot
     ) {
+    }
+
+    /**
+     * 계정별 예산 설정과 실제 비용 스냅샷을 조합해 계정별 사용량 리스트 생성
+     */
+    private List<BudgetUsageResponse.AccountUsage> buildAccountUsages(
+            Long memberId,
+            CloudCostAggregator.CloudCostSnapshot snapshot,
+            List<MemberAccountBudget> budgets
+    ) {
+        if (snapshot.accountCosts() == null || snapshot.accountCosts().isEmpty()) {
+            return List.of();
+        }
+
+        // (provider, accountId) 기준으로 예산 매핑
+        var budgetMap = budgets.stream().collect(
+                java.util.stream.Collectors.toMap(
+                        b -> key(b.getProvider(), b.getAccountId()),
+                        b -> b
+                )
+        );
+
+        List<BudgetUsageResponse.AccountUsage> result = new java.util.ArrayList<>();
+
+        for (CloudCostAggregator.AccountCostSnapshot cost : snapshot.accountCosts()) {
+            String provider = cost.provider();
+            Long accountId = cost.accountId();
+            String key = key(provider, accountId);
+            MemberAccountBudget budget = budgetMap.get(key);
+
+            BigDecimal currentCost = cost.costKrw().setScale(2, RoundingMode.HALF_UP);
+            BigDecimal monthlyLimit = budget != null
+                    ? budget.getMonthlyBudgetLimit().setScale(2, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            Integer accountThreshold = budget != null ? budget.getAlertThreshold() : null;
+
+            double accountUsagePercentage = 0.0;
+            if (monthlyLimit.compareTo(BigDecimal.ZERO) > 0) {
+                accountUsagePercentage = currentCost
+                        .divide(monthlyLimit, 4, RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(100))
+                        .doubleValue();
+            }
+
+            boolean accountThresholdReached =
+                    accountThreshold != null && accountThreshold > 0 && accountUsagePercentage >= accountThreshold;
+
+            result.add(new BudgetUsageResponse.AccountUsage(
+                    provider,
+                    accountId,
+                    cost.accountName(),
+                    currentCost,
+                    monthlyLimit,
+                    accountThreshold,
+                    accountUsagePercentage,
+                    accountThresholdReached,
+                    "KRW"
+            ));
+        }
+
+        return result;
+    }
+
+    private List<MemberAccountBudget> budgetSettingsFor(Member member) {
+        return memberAccountBudgetRepository.findByMemberId(member.getId());
+    }
+
+    private String key(String provider, Long accountId) {
+        return provider + ":" + accountId;
     }
 }
 
