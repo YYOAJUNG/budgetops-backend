@@ -11,8 +11,12 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -23,6 +27,9 @@ public class AzureApiClient {
 
     private static final String ARM_BASE_URL = "https://management.azure.com";
     private static final String SCOPE_MANAGEMENT = "https://management.azure.com/.default";
+    private static final String COMPUTE_API_VERSION = "2023-09-01";
+    private static final String METRICS_API_VERSION = "2023-10-01";
+    private static final DateTimeFormatter ISO_INSTANT = DateTimeFormatter.ISO_INSTANT;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
@@ -85,7 +92,7 @@ public class AzureApiClient {
     public JsonNode listVirtualMachines(String subscriptionId, String accessToken) {
         String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId + "/providers/Microsoft.Compute/virtualMachines";
         Map<String, String> params = new HashMap<>();
-        params.put("api-version", "2023-09-01");
+        params.put("api-version", COMPUTE_API_VERSION);
         return get(url, accessToken, params);
     }
 
@@ -95,7 +102,7 @@ public class AzureApiClient {
                 + "/providers/Microsoft.Compute/virtualMachines/" + vmName
                 + "/instanceView";
         Map<String, String> params = new HashMap<>();
-        params.put("api-version", "2023-09-01");
+        params.put("api-version", COMPUTE_API_VERSION);
         return get(url, accessToken, params);
     }
 
@@ -146,6 +153,55 @@ public class AzureApiClient {
         return post(url, accessToken, params, body);
     }
 
+    public JsonNode getVirtualMachineMetrics(
+            String resourceId,
+            String accessToken,
+            Instant startTime,
+            Instant endTime,
+            Duration interval,
+            String metricNames,
+            String aggregations
+    ) {
+        String normalizedId = resourceId.startsWith("/") ? resourceId : "/" + resourceId;
+        String url = ARM_BASE_URL + normalizedId + "/providers/microsoft.insights/metrics";
+
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", METRICS_API_VERSION);
+        params.put("timespan", formatTimespan(startTime, endTime));
+        params.put("aggregation", aggregations);
+        params.put("metricnames", metricNames);
+        params.put("metricNamespace", "microsoft.compute/virtualmachines");
+        if (interval != null && !interval.isZero() && !interval.isNegative()) {
+            params.put("interval", formatInterval(interval));
+        }
+
+        return get(url, accessToken, params);
+    }
+
+    public void startVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+        String url = buildVirtualMachineActionUrl(subscriptionId, resourceGroup, vmName, "start");
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", COMPUTE_API_VERSION);
+        post(url, accessToken, params, null);
+    }
+
+    public void powerOffVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken, boolean skipShutdown) {
+        String url = buildVirtualMachineActionUrl(subscriptionId, resourceGroup, vmName, "powerOff");
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", COMPUTE_API_VERSION);
+        if (skipShutdown) {
+            params.put("skipShutdown", "true");
+        }
+        post(url, accessToken, params, null);
+    }
+
+    public void deallocateVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+        String url = buildVirtualMachineActionUrl(subscriptionId, resourceGroup, vmName, "deallocate");
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", COMPUTE_API_VERSION);
+        post(url, accessToken, params, null);
+    }
+
     private JsonNode get(String url, String accessToken, Map<String, String> params) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(accessToken);
@@ -181,7 +237,11 @@ public class AzureApiClient {
                     new HttpEntity<>(body, headers),
                     String.class
             );
-            return objectMapper.readTree(response.getBody());
+            String responseBody = response.getBody();
+            if (responseBody == null || responseBody.isBlank()) {
+                return objectMapper.createObjectNode();
+            }
+            return objectMapper.readTree(responseBody);
         } catch (HttpStatusCodeException e) {
             log.error("Azure POST 호출 실패: url={}, status={}, body={}", requestUrl, e.getStatusCode(), e.getResponseBodyAsString());
             throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
@@ -198,6 +258,22 @@ public class AzureApiClient {
         UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(url);
         params.forEach(builder::queryParam);
         return builder.toUriString();
+    }
+
+    private String buildVirtualMachineActionUrl(String subscriptionId, String resourceGroup, String vmName, String action) {
+        return ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName
+                + "/" + action;
+    }
+
+    private String formatTimespan(Instant start, Instant end) {
+        return ISO_INSTANT.format(start) + "/" + ISO_INSTANT.format(end);
+    }
+
+    private String formatInterval(Duration duration) {
+        long minutes = Math.max(1, duration.toMinutes());
+        return "PT" + minutes + "M";
     }
 }
 

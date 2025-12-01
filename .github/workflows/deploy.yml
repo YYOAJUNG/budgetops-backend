@@ -1,7 +1,7 @@
 name: backend-deploy
 on:
   push:
-    branches: [ main, develop, feature/21 ]
+    branches: [ main, develop, feature/22 ]
   pull_request:
     branches: [ develop, main ]              # PR 때 빌드만
   workflow_dispatch: { }
