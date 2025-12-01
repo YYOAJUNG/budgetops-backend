@@ -115,6 +115,15 @@ public class BudgetService {
         Member member = getMember(memberId);
         UsageComputation computation = computeUsage(member);
         BudgetUsageResponse usage = computation.usage();
+        log.info(
+                "Budget usage for member {}: month={}, totalCost={}, budgetLimit={}, usagePercentage={}%, threshold={}",
+                memberId,
+                usage.month(),
+                usage.currentMonthCost(),
+                usage.monthlyBudgetLimit(),
+                String.format("%.2f", usage.usagePercentage()),
+                usage.alertThreshold()
+        );
         resetAlertIfNewMonth(member, usage.month());
 
         List<BudgetAlertResponse> alerts = new java.util.ArrayList<>();
@@ -160,19 +169,37 @@ public class BudgetService {
                 String mapKey = key(provider, accountId);
                 MemberAccountBudget budget = budgetMap.get(mapKey);
                 if (budget == null) {
+                    log.debug("No budget setting found for account usage: provider={}, accountId={}", provider, accountId);
                     continue;
                 }
 
                 Integer accountThreshold = budget.getAlertThreshold();
                 if (accountThreshold == null || accountThreshold <= 0) {
+                    log.debug(
+                            "Skipping account for alerts (no valid threshold): provider={}, accountId={}, threshold={}",
+                            provider, accountId, accountThreshold
+                    );
                     continue;
                 }
 
                 if (!accountUsage.thresholdReached()) {
+                    log.debug(
+                            "Account threshold not reached: provider={}, accountId={}, cost={}, limit={}, usage={}%, threshold={}",
+                            provider,
+                            accountId,
+                            accountUsage.currentMonthCost(),
+                            accountUsage.monthlyBudgetLimit(),
+                            String.format("%.2f", accountUsage.usagePercentage()),
+                            accountThreshold
+                    );
                     continue;
                 }
 
                 if (accountAlertAlreadyTriggeredThisMonth(budget, usage.month())) {
+                    log.debug(
+                            "Account alert already triggered this month: provider={}, accountId={}, month={}",
+                            provider, accountId, usage.month()
+                    );
                     continue;
                 }
 
