@@ -127,6 +127,26 @@ public class AzureComputeService {
         }
     }
 
+    @Transactional
+    public void deleteVirtualMachine(Long accountId, String resourceGroup, String vmName) {
+        AzureAccount account = getActiveAccount(accountId);
+        validateRequired(resourceGroup, "resourceGroup");
+        validateRequired(vmName, "vmName");
+
+        AzureAccessToken token = tokenManager.getToken(
+                account.getTenantId(),
+                account.getClientId(),
+                account.getClientSecretEnc()
+        );
+
+        try {
+            apiClient.deleteVirtualMachine(account.getSubscriptionId(), resourceGroup, vmName, token.getAccessToken());
+        } catch (Exception e) {
+            tokenManager.invalidate(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+            throw e;
+        }
+    }
+
     private AzureAccount getActiveAccount(Long accountId) {
         AzureAccount account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new IllegalArgumentException("Azure 계정을 찾을 수 없습니다."));
@@ -138,12 +158,8 @@ public class AzureComputeService {
     }
 
     private void validateResourceIdentity(String resourceGroup, String vmName) {
-        if (resourceGroup == null || resourceGroup.isBlank()) {
-            throw new IllegalArgumentException("resourceGroup 파라미터는 필수입니다.");
-        }
-        if (vmName == null || vmName.isBlank()) {
-            throw new IllegalArgumentException("vmName 파라미터는 필수입니다.");
-        }
+        validateRequired(resourceGroup, "resourceGroup");
+        validateRequired(vmName, "vmName");
     }
 
     private String extractResourceGroup(String resourceId) {
@@ -192,6 +208,12 @@ public class AzureComputeService {
         } catch (Exception e) {
             log.warn("Failed to fetch instance view for VM {}: {}", vmId, e.getMessage());
             return null;
+        }
+    }
+
+    private void validateRequired(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " 파라미터는 필수입니다.");
         }
     }
 

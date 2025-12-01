@@ -56,5 +56,15 @@ public class AzureComputeController {
         computeService.stopVirtualMachine(accountId, resourceGroup, vmName, skipShutdown);
         return ResponseEntity.accepted().build();
     }
+
+    @DeleteMapping("/{vmName}")
+    public ResponseEntity<Void> deleteVirtualMachine(
+            @PathVariable Long accountId,
+            @PathVariable String vmName,
+            @RequestParam String resourceGroup
+    ) {
+        computeService.deleteVirtualMachine(accountId, resourceGroup, vmName);
+        return ResponseEntity.noContent().build();
+    }
 }
 

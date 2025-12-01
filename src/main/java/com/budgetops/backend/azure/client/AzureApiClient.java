@@ -187,6 +187,17 @@ public class AzureApiClient {
         return getRaw(requestUrl, accessToken);
     }
 
+    public void deleteVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+        String baseUrl = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName;
+
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", COMPUTE_API_VERSION);
+
+        delete(baseUrl, accessToken, params);
+    }
+
     public void startVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
         String url = buildVirtualMachineActionUrl(subscriptionId, resourceGroup, vmName, "start");
         Map<String, String> params = new HashMap<>();
@@ -229,6 +240,27 @@ public class AzureApiClient {
             throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
         } catch (Exception e) {
             log.error("Azure GET 호출 중 알 수 없는 오류: url={}", requestUrl, e);
+            throw new IllegalStateException("Azure API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
+        }
+    }
+
+    private void delete(String baseUrl, String accessToken, Map<String, String> params) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+
+        String requestUrl = withQueryParams(baseUrl, params);
+        try {
+            restTemplate.exchange(
+                    requestUrl,
+                    HttpMethod.DELETE,
+                    new HttpEntity<>(headers),
+                    String.class
+            );
+        } catch (HttpStatusCodeException e) {
+            log.error("Azure DELETE 호출 실패: url={}, status={}, body={}", requestUrl, e.getStatusCode(), e.getResponseBodyAsString());
+            throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+        } catch (Exception e) {
+            log.error("Azure DELETE 호출 중 알 수 없는 오류: url={}", requestUrl, e);
             throw new IllegalStateException("Azure API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
         }
     }
