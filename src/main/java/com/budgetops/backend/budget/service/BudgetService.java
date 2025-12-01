@@ -4,6 +4,8 @@ import com.budgetops.backend.budget.dto.BudgetAlertResponse;
 import com.budgetops.backend.budget.dto.BudgetSettingsRequest;
 import com.budgetops.backend.budget.dto.BudgetSettingsResponse;
 import com.budgetops.backend.budget.dto.BudgetUsageResponse;
+import com.budgetops.backend.budget.entity.MemberAccountBudget;
+import com.budgetops.backend.budget.repository.MemberAccountBudgetRepository;
 import com.budgetops.backend.domain.user.entity.Member;
 import com.budgetops.backend.domain.user.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +17,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 
 @Slf4j
@@ -26,14 +30,24 @@ public class BudgetService {
 
     private final MemberRepository memberRepository;
     private final CloudCostAggregator cloudCostAggregator;
+    private final MemberAccountBudgetRepository memberAccountBudgetRepository;
 
     @Transactional(readOnly = true)
     public BudgetSettingsResponse getSettings(Long memberId) {
         Member member = getMember(memberId);
+        List<MemberAccountBudget> accountBudgets = memberAccountBudgetRepository.findByMemberId(memberId);
         return new BudgetSettingsResponse(
                 member.getMonthlyBudgetLimit(),
                 member.getBudgetAlertThreshold(),
-                member.getUpdatedAt()
+                member.getUpdatedAt(),
+                accountBudgets.stream()
+                        .map(budget -> new BudgetSettingsResponse.MemberAccountBudgetView(
+                                budget.getProvider(),
+                                budget.getAccountId(),
+                                budget.getMonthlyBudgetLimit(),
+                                budget.getAlertThreshold()
+                        ))
+                        .toList()
         );
     }
 
@@ -46,10 +60,47 @@ public class BudgetService {
         member.setBudgetAlertThreshold(request.alertThreshold());
         member.setBudgetAlertTriggeredAt(null); // 설정 변경 시 알림 재활성화
         Member saved = memberRepository.save(member);
+
+        // 계정별 예산 설정 갱신
+        List<BudgetSettingsRequest.MemberAccountBudgetSetting> requestedBudgets =
+                Optional.ofNullable(request.accountBudgets()).orElse(Collections.emptyList());
+
+        // 기존 설정을 전부 삭제하고, 새 설정으로 교체 (간단한 동작 보장)
+        memberAccountBudgetRepository.deleteByMemberId(memberId);
+
+        for (BudgetSettingsRequest.MemberAccountBudgetSetting setting : requestedBudgets) {
+            if (setting.monthlyBudgetLimit() == null) {
+                continue;
+            }
+            if (setting.monthlyBudgetLimit().compareTo(BigDecimal.ZERO) <= 0) {
+                // 0 이하 예산은 저장하지 않음 (프론트에서도 필터링하지만 이중 방어)
+                continue;
+            }
+
+            MemberAccountBudget budget = MemberAccountBudget.builder()
+                    .member(member)
+                    .provider(setting.provider())
+                    .accountId(setting.accountId())
+                    .monthlyBudgetLimit(setting.monthlyBudgetLimit().setScale(2, RoundingMode.HALF_UP))
+                    .alertThreshold(setting.alertThreshold())
+                    .build();
+            memberAccountBudgetRepository.save(budget);
+        }
+
+        List<MemberAccountBudget> updatedBudgets = memberAccountBudgetRepository.findByMemberId(memberId);
+
         return new BudgetSettingsResponse(
                 saved.getMonthlyBudgetLimit(),
                 saved.getBudgetAlertThreshold(),
-                saved.getUpdatedAt()
+                saved.getUpdatedAt(),
+                updatedBudgets.stream()
+                        .map(budget -> new BudgetSettingsResponse.MemberAccountBudgetView(
+                                budget.getProvider(),
+                                budget.getAccountId(),
+                                budget.getMonthlyBudgetLimit(),
+                                budget.getAlertThreshold()
+                        ))
+                        .toList()
         );
     }
 
