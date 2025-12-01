@@ -163,19 +163,28 @@ public class AzureApiClient {
             String aggregations
     ) {
         String normalizedId = resourceId.startsWith("/") ? resourceId : "/" + resourceId;
-        String url = ARM_BASE_URL + normalizedId + "/providers/microsoft.insights/metrics";
+        String baseUrl = ARM_BASE_URL + normalizedId + "/providers/microsoft.insights/metrics";
 
-        Map<String, String> params = new HashMap<>();
-        params.put("api-version", METRICS_API_VERSION);
-        params.put("timespan", formatTimespan(startTime, endTime));
-        params.put("aggregation", aggregations);
-        params.put("metricnames", metricNames);
-        params.put("metricNamespace", "microsoft.compute/virtualmachines");
+        // Azure Metrics API가 metricnames 값을 다시 디코딩하면서 이중 인코딩된 값
+        // (예: Percentage%2520CPU)을 그대로 비교해 400을 반환하는 문제가 있어,
+        // 이 엔드포인트에 한해서는 쿼리 파라미터를 직접 구성해 추가 인코딩을 피한다.
+        StringBuilder urlBuilder = new StringBuilder(baseUrl);
+        urlBuilder.append("?api-version=").append(METRICS_API_VERSION);
+        urlBuilder.append("&timespan=").append(formatTimespan(startTime, endTime));
+        urlBuilder.append("&aggregation=").append(aggregations);
         if (interval != null && !interval.isZero() && !interval.isNegative()) {
-            params.put("interval", formatInterval(interval));
+            urlBuilder.append("&interval=").append(formatInterval(interval));
+        }
+        urlBuilder.append("&metricNamespace=microsoft.compute/virtualmachines");
+        if (metricNames != null && !metricNames.isBlank()) {
+            // 공백/콤마가 포함된 메트릭 이름을 그대로 전달하고 RestTemplate 한 번만 인코딩하도록 맡긴다.
+            // 이렇게 하면 Azure 측에서 디코딩 후 "Percentage CPU", "Network In Total" 등
+            // 유효한 메트릭 이름과 정상적으로 매칭된다.
+            urlBuilder.append("&metricnames=").append(metricNames);
         }
 
-        return get(url, accessToken, params);
+        String requestUrl = urlBuilder.toString();
+        return getRaw(requestUrl, accessToken);
     }
 
     public void startVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
@@ -207,6 +216,31 @@ public class AzureApiClient {
         headers.setBearerAuth(accessToken);
 
         String requestUrl = withQueryParams(url, params);
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(
+                    requestUrl,
+                    HttpMethod.GET,
+                    new HttpEntity<>(headers),
+                    String.class
+            );
+            return objectMapper.readTree(response.getBody());
+        } catch (HttpStatusCodeException e) {
+            log.error("Azure GET 호출 실패: url={}, status={}, body={}", requestUrl, e.getStatusCode(), e.getResponseBodyAsString());
+            throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+        } catch (Exception e) {
+            log.error("Azure GET 호출 중 알 수 없는 오류: url={}", requestUrl, e);
+            throw new IllegalStateException("Azure API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 쿼리 파라미터가 이미 인코딩된 전체 URL을 그대로 사용해 GET 호출을 수행한다.
+     * Azure Metrics API와 같이 인코딩 방식에 민감한 엔드포인트에만 사용한다.
+     */
+    private JsonNode getRaw(String requestUrl, String accessToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+
         try {
             ResponseEntity<String> response = restTemplate.exchange(
                     requestUrl,
