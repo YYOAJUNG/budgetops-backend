@@ -3,6 +3,7 @@ package com.budgetops.backend.notification.controller;
 import com.budgetops.backend.notification.dto.SlackSettingsRequest;
 import com.budgetops.backend.notification.dto.SlackSettingsResponse;
 import com.budgetops.backend.notification.service.NotificationSettingsService;
+import com.budgetops.backend.notification.service.SlackNotificationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,10 +11,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/notifications")
@@ -22,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class NotificationSettingsController {
 
     private final NotificationSettingsService notificationSettingsService;
+    private final SlackNotificationService slackNotificationService;
 
     @GetMapping("/slack")
     public ResponseEntity<SlackSettingsResponse> getSlackSettings() {
@@ -35,6 +40,26 @@ public class NotificationSettingsController {
     ) {
         String email = getCurrentUserEmail();
         return ResponseEntity.ok(notificationSettingsService.updateSlackSettings(email, request));
+    }
+
+    @PostMapping("/slack/test")
+    public ResponseEntity<Map<String, String>> testSlackNotification() {
+        String email = getCurrentUserEmail();
+        SlackSettingsResponse settings = notificationSettingsService.getSlackSettings(email);
+        
+        if (!settings.enabled() || settings.webhookUrl() == null || settings.webhookUrl().isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Slack 알림이 활성화되지 않았거나 Webhook URL이 설정되지 않았습니다."));
+        }
+
+        try {
+            slackNotificationService.sendTestMessage(settings.webhookUrl());
+            return ResponseEntity.ok(Map.of("message", "테스트 메시지가 성공적으로 전송되었습니다."));
+        } catch (Exception e) {
+            log.error("Slack 테스트 메시지 전송 실패: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("error", "테스트 메시지 전송에 실패했습니다: " + e.getMessage()));
+        }
     }
 
     private String getCurrentUserEmail() {

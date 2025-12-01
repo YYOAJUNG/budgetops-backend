@@ -66,5 +66,31 @@ public class SlackNotificationService {
                 Optional.ofNullable(alert.getThreshold()).orElse(0.0)
         );
     }
+
+    /**
+     * 테스트 메시지 전송
+     */
+    public void sendTestMessage(String webhookUrl) {
+        if (!StringUtils.hasText(webhookUrl)) {
+            throw new IllegalArgumentException("Webhook URL이 필요합니다.");
+        }
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("text", """
+                ✅ *Slack 알림 테스트*
+                
+                BudgetOps에서 Slack 알림이 정상적으로 작동합니다!
+                
+                이 메시지가 보인다면 알림 설정이 올바르게 구성되었습니다.
+                """);
+
+        try {
+            restTemplate.postForEntity(webhookUrl, payload, String.class);
+            log.info("테스트 Slack 메시지 전송 성공");
+        } catch (Exception ex) {
+            log.error("테스트 Slack 메시지 전송 실패: {}", ex.getMessage());
+            throw new RuntimeException("Slack 메시지 전송에 실패했습니다: " + ex.getMessage(), ex);
+        }
+    }
 }
 
