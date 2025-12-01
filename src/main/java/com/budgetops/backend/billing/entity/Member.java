@@ -35,6 +35,13 @@ public class Member {
     @Builder.Default
     private List<Workspace> workspaces = new ArrayList<>();
 
+    @Column(name = "slack_webhook_url", length = 1024)
+    private String slackWebhookUrl;
+
+    @Column(name = "slack_notifications_enabled")
+    @Builder.Default
+    private Boolean slackNotificationsEnabled = Boolean.FALSE;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
