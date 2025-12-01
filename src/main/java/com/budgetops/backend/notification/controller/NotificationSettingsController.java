@@ -28,22 +28,22 @@ public class NotificationSettingsController {
 
     @GetMapping("/slack")
     public ResponseEntity<SlackSettingsResponse> getSlackSettings() {
-        String email = getCurrentUserEmail();
-        return ResponseEntity.ok(notificationSettingsService.getSlackSettings(email));
+        Long memberId = getCurrentMemberId();
+        return ResponseEntity.ok(notificationSettingsService.getSlackSettings(memberId));
     }
 
     @PutMapping("/slack")
     public ResponseEntity<SlackSettingsResponse> updateSlackSettings(
             @Valid @RequestBody SlackSettingsRequest request
     ) {
-        String email = getCurrentUserEmail();
-        return ResponseEntity.ok(notificationSettingsService.updateSlackSettings(email, request));
+        Long memberId = getCurrentMemberId();
+        return ResponseEntity.ok(notificationSettingsService.updateSlackSettings(memberId, request));
     }
 
     @PostMapping("/slack/test")
     public ResponseEntity<Map<String, String>> testSlackNotification() {
-        String email = getCurrentUserEmail();
-        SlackSettingsResponse settings = notificationSettingsService.getSlackSettings(email);
+        Long memberId = getCurrentMemberId();
+        SlackSettingsResponse settings = notificationSettingsService.getSlackSettings(memberId);
         
         if (!settings.enabled() || settings.webhookUrl() == null || settings.webhookUrl().isEmpty()) {
             return ResponseEntity.badRequest()
@@ -52,8 +52,8 @@ public class NotificationSettingsController {
 
         try {
             // 마스킹된 URL이므로 실제 URL을 다시 가져와야 함
-            Member member = memberRepository.findByEmail(email)
-                    .orElseThrow(() -> new IllegalArgumentException("Member not found: " + email));
+            Member member = memberRepository.findById(memberId)
+                    .orElseThrow(() -> new IllegalArgumentException("Member not found: " + memberId));
             
             slackNotificationService.sendTestMessage(member.getSlackWebhookUrl());
             return ResponseEntity.ok(Map.of("message", "테스트 메시지가 성공적으로 전송되었습니다."));
@@ -64,11 +64,11 @@ public class NotificationSettingsController {
         }
     }
 
-    private String getCurrentUserEmail() {
+    private Long getCurrentMemberId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || authentication.getName() == null) {
+        if (authentication == null || authentication.getPrincipal() == null) {
             throw new IllegalStateException("인증되지 않은 사용자입니다.");
         }
-        return authentication.getName();
+        return (Long) authentication.getPrincipal();
     }
 }

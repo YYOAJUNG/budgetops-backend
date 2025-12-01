@@ -18,8 +18,8 @@ public class NotificationSettingsService {
     private final MemberRepository memberRepository;
 
     @Transactional(readOnly = true)
-    public SlackSettingsResponse getSlackSettings(String email) {
-        Member member = findMemberByEmail(email);
+    public SlackSettingsResponse getSlackSettings(Long memberId) {
+        Member member = findMemberById(memberId);
         String maskedWebhookUrl = member.getSlackWebhookUrl() != null && member.getSlackWebhookUrl().length() > 8
                 ? member.getSlackWebhookUrl().substring(0, 8) + "********"
                 : null;
@@ -32,8 +32,8 @@ public class NotificationSettingsService {
     }
 
     @Transactional
-    public SlackSettingsResponse updateSlackSettings(String email, SlackSettingsRequest request) {
-        Member member = findMemberByEmail(email);
+    public SlackSettingsResponse updateSlackSettings(Long memberId, SlackSettingsRequest request) {
+        Member member = findMemberById(memberId);
 
         if (Boolean.TRUE.equals(request.enabled()) && !StringUtils.hasText(request.webhookUrl())) {
             throw new IllegalArgumentException("Slack Webhook URL을 입력해주세요.");
@@ -46,7 +46,7 @@ public class NotificationSettingsService {
 
         Member saved = memberRepository.save(member);
 
-        log.info("Updated slack settings for member {}", email);
+        log.info("Updated slack settings for member {}", memberId);
 
         String maskedWebhookUrl = saved.getSlackWebhookUrl() != null && saved.getSlackWebhookUrl().length() > 8
                 ? saved.getSlackWebhookUrl().substring(0, 8) + "********"
@@ -59,9 +59,9 @@ public class NotificationSettingsService {
         );
     }
 
-    private Member findMemberByEmail(String email) {
-        return memberRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("Member not found: " + email));
+    private Member findMemberById(Long memberId) {
+        return memberRepository.findById(memberId)
+                .orElseThrow(() -> new IllegalArgumentException("Member not found: " + memberId));
     }
 }
 
