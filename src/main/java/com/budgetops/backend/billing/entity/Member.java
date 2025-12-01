@@ -29,7 +29,7 @@ public class Member {
     @Column(nullable = false)
     private String name;
 
-    @Column(nullable = false)
+    @Column
     private String password;
 
     @ManyToMany(mappedBy = "members")
