@@ -461,30 +461,6 @@ public class AzureComputeService {
                 .build();
     }
 
-    @Transactional
-    public void stopVirtualMachine(Long accountId, String vmName, String resourceGroup, boolean skipShutdown) {
-        AzureAccount account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new IllegalArgumentException("Azure 계정을 찾을 수 없습니다."));
-
-        if (!Boolean.TRUE.equals(account.getActive())) {
-            throw new IllegalStateException("비활성화된 Azure 계정입니다.");
-        }
-
-        if (resourceGroup == null || resourceGroup.isBlank()) {
-            throw new IllegalArgumentException("Resource group이 필요합니다.");
-        }
-
-        AzureAccessToken token = tokenManager.getToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
-        try {
-            apiClient.powerOffVirtualMachine(account.getSubscriptionId(), resourceGroup, vmName, token.getAccessToken(), skipShutdown);
-        } catch (Exception e) {
-            tokenManager.invalidate(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
-            log.error("Failed to stop Azure VM {}: {}", vmName, e.getMessage(), e);
-            throw new IllegalStateException("Azure VM 중지 실패: " + e.getMessage(), e);
-        }
-    }
-
-
     private record NetworkInfo(String privateIp, String publicIp) {
         static NetworkInfo empty() {
             return new NetworkInfo("", "");
