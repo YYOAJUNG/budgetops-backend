@@ -26,12 +26,7 @@ public class AzureComputeService {
 
     @Transactional(readOnly = true)
     public List<AzureVirtualMachineResponse> listVirtualMachines(Long accountId, String locationFilter) {
-        AzureAccount account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new IllegalArgumentException("Azure 계정을 찾을 수 없습니다."));
-
-        if (!Boolean.TRUE.equals(account.getActive())) {
-            throw new IllegalStateException("비활성화된 Azure 계정입니다.");
-        }
+        AzureAccount account = getActiveAccount(accountId);
 
         AzureAccessToken token = tokenManager.getToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
         JsonNode response;
@@ -104,6 +99,69 @@ public class AzureComputeService {
         return result;
     }
 
+    @Transactional
+    public void startVirtualMachine(Long accountId, String resourceGroup, String vmName) {
+        AzureAccount account = getActiveAccount(accountId);
+        validateResourceIdentity(resourceGroup, vmName);
+
+        AzureAccessToken token = tokenManager.getToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+        try {
+            apiClient.startVirtualMachine(account.getSubscriptionId(), resourceGroup, vmName, token.getAccessToken());
+        } catch (Exception e) {
+            tokenManager.invalidate(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+            throw e;
+        }
+    }
+
+    @Transactional
+    public void stopVirtualMachine(Long accountId, String resourceGroup, String vmName, boolean skipShutdown) {
+        AzureAccount account = getActiveAccount(accountId);
+        validateResourceIdentity(resourceGroup, vmName);
+
+        AzureAccessToken token = tokenManager.getToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+        try {
+            apiClient.powerOffVirtualMachine(account.getSubscriptionId(), resourceGroup, vmName, token.getAccessToken(), skipShutdown);
+        } catch (Exception e) {
+            tokenManager.invalidate(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+            throw e;
+        }
+    }
+
+    @Transactional
+    public void deleteVirtualMachine(Long accountId, String resourceGroup, String vmName) {
+        AzureAccount account = getActiveAccount(accountId);
+        validateRequired(resourceGroup, "resourceGroup");
+        validateRequired(vmName, "vmName");
+
+        AzureAccessToken token = tokenManager.getToken(
+                account.getTenantId(),
+                account.getClientId(),
+                account.getClientSecretEnc()
+        );
+
+        try {
+            apiClient.deleteVirtualMachine(account.getSubscriptionId(), resourceGroup, vmName, token.getAccessToken());
+        } catch (Exception e) {
+            tokenManager.invalidate(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+            throw e;
+        }
+    }
+
+    private AzureAccount getActiveAccount(Long accountId) {
+        AzureAccount account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new IllegalArgumentException("Azure 계정을 찾을 수 없습니다."));
+
+        if (!Boolean.TRUE.equals(account.getActive())) {
+            throw new IllegalStateException("비활성화된 Azure 계정입니다.");
+        }
+        return account;
+    }
+
+    private void validateResourceIdentity(String resourceGroup, String vmName) {
+        validateRequired(resourceGroup, "resourceGroup");
+        validateRequired(vmName, "vmName");
+    }
+
     private String extractResourceGroup(String resourceId) {
         if (resourceId == null || resourceId.isBlank()) {
             return "";
@@ -150,6 +208,12 @@ public class AzureComputeService {
         } catch (Exception e) {
             log.warn("Failed to fetch instance view for VM {}: {}", vmId, e.getMessage());
             return null;
+        }
+    }
+
+    private void validateRequired(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " 파라미터는 필수입니다.");
         }
     }
 
