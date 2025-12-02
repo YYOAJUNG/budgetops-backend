@@ -26,22 +26,33 @@ public class MCPContextBuilder {
 
     /**
      * MCP 컨텍스트를 생성합니다.
+     * 예외 발생 시에도 빈 컨텍스트를 반환하여 서비스가 계속 진행되도록 합니다.
      */
     public MCPContext buildContext(Long memberId) {
-        // 리소스 분석
-        ResourceAnalysisService.ResourceAnalysisResult analysis = 
-                resourceAnalysisService.analyzeAllResources(memberId);
+        try {
+            // 리소스 분석
+            ResourceAnalysisService.ResourceAnalysisResult analysis = 
+                    resourceAnalysisService.analyzeAllResources(memberId);
 
-        // 규칙-리소스 매칭
-        List<RuleResourceMatcher.MatchedRule> matchedRules = 
-                ruleResourceMatcher.matchRules(analysis);
+            // 규칙-리소스 매칭
+            List<RuleResourceMatcher.MatchedRule> matchedRules = 
+                    ruleResourceMatcher.matchRules(analysis);
 
-        // MCP 컨텍스트 생성
-        return new MCPContext(
-                formatResources(analysis),
-                formatMatchedRules(matchedRules),
-                formatOptimizationOpportunities(matchedRules)
-        );
+            // MCP 컨텍스트 생성
+            return new MCPContext(
+                    formatResources(analysis),
+                    formatMatchedRules(matchedRules),
+                    formatOptimizationOpportunities(matchedRules)
+            );
+        } catch (Exception e) {
+            log.error("Failed to build MCP context for member {}: {}", memberId, e.getMessage(), e);
+            // 예외 발생 시 빈 컨텍스트 반환
+            return new MCPContext(
+                    "리소스 정보를 불러오지 못했습니다.\n",
+                    "최적화 규칙 매칭을 수행할 수 없습니다.\n",
+                    "최적화 기회를 식별할 수 없습니다.\n"
+            );
+        }
     }
 
     /**
@@ -52,7 +63,7 @@ public class MCPContextBuilder {
         sb.append("=== 클라우드 리소스 현황 ===\n\n");
 
         // AWS 리소스
-        if (!analysis.getAwsResources().isEmpty()) {
+        if (analysis.getAwsResources() != null && !analysis.getAwsResources().isEmpty()) {
             sb.append("📊 AWS EC2:\n");
             for (Map.Entry<String, Map<String, List<com.budgetops.backend.aws.dto.AwsEc2InstanceResponse>>> accountEntry : 
                     analysis.getAwsResources().entrySet()) {
@@ -72,7 +83,7 @@ public class MCPContextBuilder {
         }
 
         // Azure 리소스
-        if (!analysis.getAzureResources().isEmpty()) {
+        if (analysis.getAzureResources() != null && !analysis.getAzureResources().isEmpty()) {
             sb.append("📊 Azure Virtual Machines:\n");
             for (Map.Entry<String, List<com.budgetops.backend.azure.dto.AzureVirtualMachineResponse>> accountEntry : 
                     analysis.getAzureResources().entrySet()) {
@@ -90,7 +101,7 @@ public class MCPContextBuilder {
         }
 
         // GCP 리소스
-        if (!analysis.getGcpResources().isEmpty()) {
+        if (analysis.getGcpResources() != null && !analysis.getGcpResources().isEmpty()) {
             sb.append("📊 GCP Compute Engine:\n");
             for (Map.Entry<String, List<com.budgetops.backend.gcp.dto.GcpResourceResponse>> accountEntry : 
                     analysis.getGcpResources().entrySet()) {
@@ -108,7 +119,7 @@ public class MCPContextBuilder {
         }
 
         // NCP 리소스
-        if (!analysis.getNcpResources().isEmpty()) {
+        if (analysis.getNcpResources() != null && !analysis.getNcpResources().isEmpty()) {
             sb.append("📊 NCP Server:\n");
             for (Map.Entry<String, Map<String, List<com.budgetops.backend.ncp.dto.NcpServerInstanceResponse>>> accountEntry : 
                     analysis.getNcpResources().entrySet()) {

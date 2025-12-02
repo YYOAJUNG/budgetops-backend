@@ -96,16 +96,28 @@ public class AIChatService {
         StringBuilder prompt = new StringBuilder();
         prompt.append("당신은 BudgetOps의 클라우드 비용 최적화 전문 AI 어시스턴트입니다.\n\n");
         
-        // MCP 컨텍스트 추가
+        // MCP 컨텍스트 추가 (예외 발생 시에도 계속 진행)
         try {
             Long memberId = getCurrentMemberId();
             if (memberId != null) {
-                MCPContextBuilder.MCPContext mcpContext = mcpContextBuilder.buildContext(memberId);
-                prompt.append(mcpContextBuilder.formatContextForPrompt(mcpContext));
-                prompt.append("\n");
+                try {
+                    MCPContextBuilder.MCPContext mcpContext = mcpContextBuilder.buildContext(memberId);
+                    String contextText = mcpContextBuilder.formatContextForPrompt(mcpContext);
+                    // 프롬프트가 너무 길어지지 않도록 제한 (약 8000자)
+                    if (contextText.length() > 8000) {
+                        log.warn("MCP context too long ({} chars), truncating", contextText.length());
+                        contextText = contextText.substring(0, 8000) + "\n\n(일부 내용이 생략되었습니다.)\n";
+                    }
+                    prompt.append(contextText);
+                    prompt.append("\n");
+                } catch (Exception e) {
+                    log.error("Failed to build MCP context for member {}: {}", memberId, e.getMessage(), e);
+                    prompt.append("리소스 정보를 불러오지 못했습니다. 규칙 기반 답변을 제공합니다.\n\n");
+                }
             }
         } catch (Exception e) {
-            log.warn("Failed to build MCP context: {}", e.getMessage());
+            log.error("Failed to get member ID for MCP context: {}", e.getMessage(), e);
+            prompt.append("리소스 정보를 불러오지 못했습니다. 규칙 기반 답변을 제공합니다.\n\n");
         }
         
         // 최적화 규칙 추가
@@ -182,13 +194,14 @@ public class AIChatService {
             generationConfig.put("temperature", 0.7);
             generationConfig.put("topK", 40);
             generationConfig.put("topP", 0.95);
-            generationConfig.put("maxOutputTokens", 2048);
+            generationConfig.put("maxOutputTokens", 8192); // 답변이 끊기는 문제 해결을 위해 증가
             requestBody.put("generationConfig", generationConfig);
             
             String url = String.format("/models/%s:generateContent?key=%s", 
                     geminiConfig.getModelName(), geminiConfig.getApiKey());
             
             log.debug("Calling Gemini API: {}", url);
+            log.debug("System prompt length: {} characters", systemPrompt.length());
             
             Map<String, Object> response;
             try {
@@ -198,7 +211,7 @@ public class AIChatService {
                         .bodyValue(requestBody)
                         .retrieve()
                         .bodyToMono(Map.class)
-                        .timeout(Duration.ofSeconds(30))
+                        .timeout(Duration.ofSeconds(50)) // 타임아웃 증가 (30초 -> 50초)
                         .block();
             } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
                 log.error("Gemini API HTTP 오류: {} - {}", e.getStatusCode(), e.getMessage());
