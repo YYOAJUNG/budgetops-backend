@@ -204,6 +204,7 @@ public class ResourceAnalysisService {
                                 instance.getInstanceType() != null ? instance.getInstanceType() : "unknown");
                         
                         // 메트릭 조회 시도 (실패해도 계속 진행)
+                        boolean metricsFetched = false;
                         try {
                             // AWS 계정 찾기
                             String region = regions.entrySet().stream()
@@ -227,6 +228,8 @@ public class ResourceAnalysisService {
                                             region, 
                                             168);
                                     
+                                    metricsFetched = true;
+                                    
                                     // CPU 사용률 평균 계산
                                     double avgCpu = metrics.getCpuUtilization().stream()
                                             .mapToDouble(m -> m.getValue() != null ? m.getValue() : 0.0)
@@ -239,16 +242,23 @@ public class ResourceAnalysisService {
                                             .average()
                                             .orElse(0.0);
                                     
-                                    if (avgCpu > 0) {
+                                    // 메트릭 정보 추가 (값이 0이어도 조회된 경우 표시)
+                                    if (!metrics.getCpuUtilization().isEmpty()) {
                                         instanceInfo += String.format(" - CPU: %.1f%%", avgCpu);
                                     }
-                                    if (avgMemory > 0) {
+                                    if (!metrics.getMemoryUtilization().isEmpty()) {
                                         instanceInfo += String.format(", 메모리: %.1f%%", avgMemory);
                                     }
                                 }
                             }
                         } catch (Exception e) {
-                            log.debug("Failed to fetch metrics for AWS EC2 instance {}: {}", instance.getInstanceId(), e.getMessage());
+                            log.warn("Failed to fetch metrics for AWS EC2 instance {}: {}", instance.getInstanceId(), e.getMessage(), e);
+                            instanceInfo += " - 메트릭 조회 실패";
+                        }
+                        
+                        // 메트릭이 조회되지 않은 경우 명시
+                        if (!metricsFetched) {
+                            instanceInfo += " - 메트릭 정보 없음";
                         }
                         
                         sb.append(instanceInfo).append("\n");
@@ -316,6 +326,7 @@ public class ResourceAnalysisService {
                                 vm.getVmSize() != null ? vm.getVmSize() : "unknown");
                         
                         // 메트릭 조회 시도 (실패해도 계속 진행)
+                        boolean metricsFetched = false;
                         try {
                             if (azureAccount != null && vm.getResourceGroup() != null && !vm.getResourceGroup().isEmpty()) {
                                 // Azure VM 메트릭 조회 (7일간 = 168시간)
@@ -331,6 +342,8 @@ public class ResourceAnalysisService {
                                         token.getAccessToken(),
                                         168);
                                 
+                                metricsFetched = true;
+                                
                                 // CPU 및 메모리 사용률 계산
                                 double avgCpu = calculateAverageMetric(metricsResponse, "Percentage CPU");
                                 // Percentage Memory 메트릭을 먼저 시도하고, 없으면 Available Memory Bytes 사용
@@ -340,7 +353,8 @@ public class ResourceAnalysisService {
                                     avgMemory = calculateMemoryUtilization(metricsResponse, "Available Memory Bytes", vm.getVmSize());
                                 }
                                 
-                                if (avgCpu > 0) {
+                                // 메트릭 정보 추가 (값이 0이어도 조회된 경우 표시)
+                                if (avgCpu >= 0) {
                                     vmInfo += String.format(" - CPU: %.1f%%", avgCpu);
                                 }
                                 if (avgMemory > 0) {
@@ -348,7 +362,13 @@ public class ResourceAnalysisService {
                                 }
                             }
                         } catch (Exception e) {
-                            log.debug("Failed to fetch metrics for Azure VM {}: {}", vm.getName(), e.getMessage());
+                            log.warn("Failed to fetch metrics for Azure VM {}: {}", vm.getName(), e.getMessage(), e);
+                            vmInfo += " - 메트릭 조회 실패";
+                        }
+                        
+                        // 메트릭이 조회되지 않은 경우 명시
+                        if (!metricsFetched && azureAccount != null) {
+                            vmInfo += " - 메트릭 정보 없음";
                         }
                         
                         sb.append(vmInfo).append("\n");
@@ -398,12 +418,15 @@ public class ResourceAnalysisService {
                                 resource.getResourceTypeShort() != null ? resource.getResourceTypeShort() : "unknown");
                         
                         // 메트릭 조회 시도 (실패해도 계속 진행)
+                        boolean metricsFetched = false;
                         try {
                             // GCP 리소스 메트릭 조회 (7일간 = 168시간)
                             GcpResourceMetricsResponse metrics = gcpResourceService.getResourceMetrics(
                                     resource.getResourceId(),
                                     memberId,
                                     168);
+                            
+                            metricsFetched = true;
                             
                             // CPU 사용률 평균 계산
                             double avgCpu = metrics.getCpuUtilization().stream()
@@ -417,14 +440,21 @@ public class ResourceAnalysisService {
                                     .average()
                                     .orElse(0.0);
                             
-                            if (avgCpu > 0) {
+                            // 메트릭 정보 추가 (값이 0이어도 조회된 경우 표시)
+                            if (!metrics.getCpuUtilization().isEmpty()) {
                                 resourceInfo += String.format(" - CPU: %.1f%%", avgCpu);
                             }
-                            if (avgMemory > 0) {
+                            if (!metrics.getMemoryUtilization().isEmpty()) {
                                 resourceInfo += String.format(", 메모리: %.1f%%", avgMemory);
                             }
                         } catch (Exception e) {
-                            log.debug("Failed to fetch metrics for GCP resource {}: {}", resource.getResourceId(), e.getMessage());
+                            log.warn("Failed to fetch metrics for GCP resource {}: {}", resource.getResourceId(), e.getMessage(), e);
+                            resourceInfo += " - 메트릭 조회 실패";
+                        }
+                        
+                        // 메트릭이 조회되지 않은 경우 명시
+                        if (!metricsFetched) {
+                            resourceInfo += " - 메트릭 정보 없음";
                         }
                         
                         sb.append(resourceInfo).append("\n");
@@ -481,6 +511,7 @@ public class ResourceAnalysisService {
                                 server.getMemorySize() != null ? server.getMemorySize() : 0);
                         
                         // 메트릭 조회 시도 (실패해도 계속 진행)
+                        boolean metricsFetched = false;
                         try {
                             if (ncpAccount != null) {
                                 String regionCode = regions.keySet().stream().findFirst().orElse(null);
@@ -495,18 +526,27 @@ public class ResourceAnalysisService {
                                         regionCode,
                                         168);
                                 
+                                metricsFetched = true;
+                                
                                 // CPU 사용률 평균 계산
                                 double avgCpu = metrics.getCpuUtilization().stream()
                                         .mapToDouble(m -> m.getValue() != null ? m.getValue() : 0.0)
                                         .average()
                                         .orElse(0.0);
                                 
-                                if (avgCpu > 0) {
+                                // 메트릭 정보 추가 (값이 0이어도 조회된 경우 표시)
+                                if (!metrics.getCpuUtilization().isEmpty()) {
                                     serverInfo += String.format(" - CPU: %.1f%%", avgCpu);
                                 }
                             }
                         } catch (Exception e) {
-                            log.debug("Failed to fetch metrics for NCP server {}: {}", server.getServerInstanceNo(), e.getMessage());
+                            log.warn("Failed to fetch metrics for NCP server {}: {}", server.getServerInstanceNo(), e.getMessage(), e);
+                            serverInfo += " - 메트릭 조회 실패";
+                        }
+                        
+                        // 메트릭이 조회되지 않은 경우 명시
+                        if (!metricsFetched && ncpAccount != null) {
+                            serverInfo += " - 메트릭 정보 없음";
                         }
                         
                         sb.append(serverInfo).append("\n");
