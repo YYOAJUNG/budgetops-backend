@@ -2,6 +2,7 @@ package com.budgetops.backend.budget.service;
 
 import com.budgetops.backend.azure.service.AzureCostService;
 import com.budgetops.backend.aws.service.AwsCostService;
+import com.budgetops.backend.gcp.dto.GcpAllAccountsCostsResponse;
 import com.budgetops.backend.gcp.service.GcpCostService;
 import com.budgetops.backend.ncp.service.NcpCostService;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
@@ -35,57 +37,103 @@ public class CloudCostAggregator {
         String endDate = endExclusive.toString();
         String month = start.format(MONTH_KEY);
 
-        BigDecimal aws = safeAwsSum(memberId, startDate, endDate);
-        BigDecimal azure = safeAzureSum(memberId, startDate, endDate);
-        BigDecimal gcp = safeGcpSum(memberId, startDate, endDate);
-        BigDecimal ncp = safeNcpSum(memberId, month);
+        List<AccountCostSnapshot> accountCosts = new ArrayList<>();
+
+        BigDecimal aws = safeAwsSum(memberId, startDate, endDate, accountCosts);
+        BigDecimal azure = safeAzureSum(memberId, startDate, endDate, accountCosts);
+        BigDecimal gcp = safeGcpSum(memberId, startDate, endDate, accountCosts);
+        BigDecimal ncp = safeNcpSum(memberId, month, accountCosts);
 
         BigDecimal total = aws.add(azure).add(gcp).add(ncp);
 
-        return new CloudCostSnapshot(total, aws, azure, gcp, ncp, month);
+        return new CloudCostSnapshot(total, aws, azure, gcp, ncp, month, accountCosts);
     }
 
-    private BigDecimal safeAwsSum(Long memberId, String startDate, String endDate) {
+    private BigDecimal safeAwsSum(Long memberId, String startDate, String endDate, List<AccountCostSnapshot> accountCosts) {
         try {
             List<AwsCostService.AccountCost> costs = awsCostService.getAllAccountsCosts(memberId, startDate, endDate);
-            double sum = costs.stream().mapToDouble(AwsCostService.AccountCost::totalCost).sum();
-            return currencyConversionService.usdToKrw(BigDecimal.valueOf(sum));
+            BigDecimal total = BigDecimal.ZERO;
+            for (AwsCostService.AccountCost cost : costs) {
+                BigDecimal usd = BigDecimal.valueOf(cost.totalCost());
+                BigDecimal krw = currencyConversionService.usdToKrw(usd);
+                total = total.add(krw);
+                accountCosts.add(new AccountCostSnapshot(
+                        "AWS",
+                        cost.accountId(),
+                        cost.accountName(),
+                        krw
+                ));
+            }
+            return total.setScale(2, RoundingMode.HALF_UP);
         } catch (Exception e) {
             log.warn("Failed to aggregate AWS cost for member {}: {}", memberId, e.getMessage());
             return BigDecimal.ZERO;
         }
     }
 
-    private BigDecimal safeAzureSum(Long memberId, String startDate, String endDate) {
+    private BigDecimal safeAzureSum(Long memberId, String startDate, String endDate, List<AccountCostSnapshot> accountCosts) {
         try {
             List<AzureCostService.AccountCost> costs = azureCostService.getAllAccountsCosts(memberId, startDate, endDate);
             BigDecimal total = BigDecimal.ZERO;
             for (AzureCostService.AccountCost cost : costs) {
                 BigDecimal amount = BigDecimal.valueOf(cost.getAmount()).setScale(2, RoundingMode.HALF_UP);
                 String currency = cost.getCurrency() != null ? cost.getCurrency() : "USD";
-                total = total.add(currencyConversionService.convert(amount, currency, "KRW"));
+                BigDecimal krw = currencyConversionService.convert(amount, currency, "KRW");
+                total = total.add(krw);
+                accountCosts.add(new AccountCostSnapshot(
+                        "AZURE",
+                        cost.getAccountId(),
+                        cost.getAccountName(),
+                        krw
+                ));
             }
-            return total;
+            return total.setScale(2, RoundingMode.HALF_UP);
         } catch (Exception e) {
             log.warn("Failed to aggregate Azure cost for member {}: {}", memberId, e.getMessage());
             return BigDecimal.ZERO;
         }
     }
 
-    private BigDecimal safeGcpSum(Long memberId, String startDate, String endDate) {
+    private BigDecimal safeGcpSum(Long memberId, String startDate, String endDate, List<AccountCostSnapshot> accountCosts) {
         try {
-            double total = gcpCostService.getMemberTotalNetCost(memberId, startDate, endDate);
-            return currencyConversionService.usdToKrw(BigDecimal.valueOf(total));
+            // 계정별 비용 정보를 가져와서 합산
+            GcpAllAccountsCostsResponse allCosts = gcpCostService.getMemberAccountsCosts(memberId, startDate, endDate);
+            BigDecimal total = BigDecimal.ZERO;
+            if (allCosts.getAccounts() != null) {
+                for (GcpAllAccountsCostsResponse.AccountCost accountCost : allCosts.getAccounts()) {
+                    BigDecimal netUsd = BigDecimal.valueOf(accountCost.getTotalNetCost());
+                    BigDecimal krw = currencyConversionService.usdToKrw(netUsd);
+                    total = total.add(krw);
+                    accountCosts.add(new AccountCostSnapshot(
+                            "GCP",
+                            accountCost.getAccountId(),
+                            accountCost.getAccountName(),
+                            krw
+                    ));
+                }
+            }
+            return total.setScale(2, RoundingMode.HALF_UP);
         } catch (Exception e) {
             log.warn("Failed to aggregate GCP cost for member {}: {}", memberId, e.getMessage());
             return BigDecimal.ZERO;
         }
     }
 
-    private BigDecimal safeNcpSum(Long memberId, String month) {
+    private BigDecimal safeNcpSum(Long memberId, String month, List<AccountCostSnapshot> accountCosts) {
         try {
-            double total = ncpCostService.getMemberMonthlyCost(memberId, month);
-            return BigDecimal.valueOf(total).setScale(2, RoundingMode.HALF_UP);
+            List<NcpCostService.AccountMonthlyCost> costs = ncpCostService.getMemberAccountsMonthlyCost(memberId, month);
+            BigDecimal total = BigDecimal.ZERO;
+            for (NcpCostService.AccountMonthlyCost cost : costs) {
+                BigDecimal krw = BigDecimal.valueOf(cost.totalCost()).setScale(2, RoundingMode.HALF_UP);
+                total = total.add(krw);
+                accountCosts.add(new AccountCostSnapshot(
+                        "NCP",
+                        cost.accountId(),
+                        cost.accountName(),
+                        krw
+                ));
+            }
+            return total;
         } catch (Exception e) {
             log.warn("Failed to aggregate NCP cost for member {}: {}", memberId, e.getMessage());
             return BigDecimal.ZERO;
@@ -98,7 +146,16 @@ public class CloudCostAggregator {
             BigDecimal azureKrw,
             BigDecimal gcpKrw,
             BigDecimal ncpKrw,
-            String month
+            String month,
+            List<AccountCostSnapshot> accountCosts
+    ) {
+    }
+
+    public record AccountCostSnapshot(
+            String provider,
+            Long accountId,
+            String accountName,
+            BigDecimal costKrw
     ) {
     }
 }

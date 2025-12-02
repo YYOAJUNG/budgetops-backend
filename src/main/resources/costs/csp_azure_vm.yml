@@ -12,7 +12,7 @@ rules:
       - metric: memory_utilization
         threshold: 40
         period: 7d
-    recommendation: "CPU 및 메모리 사용률이 7일간 평균 40% 미만인 VM은 한 단계 작은 VM 크기로 변경을 고려하세요."
+    recommendation: "현재 CPU 및 메모리 사용률이 7일간 평균 40% 미만이기 때문에, 한 단계 작은 VM 크기로 변경하여 비용을 절감하세요."
     cost_saving: "월 약 30-50% 비용 절감 가능"
     
   - id: stop_unused_vms
@@ -25,7 +25,7 @@ rules:
       - metric: network_in
         threshold: 1MB
         period: 14d
-    recommendation: "14일간 CPU 사용률이 5% 미만이고 네트워크 트래픽이 거의 없는 VM은 중지하거나 삭제를 고려하세요."
+    recommendation: "14일간 CPU 사용률이 5% 미만이고 네트워크 트래픽이 거의 없기 때문에, 이 VM은 중지하거나 삭제하여 비용을 절감하세요."
     cost_saving: "월 100% 비용 절감 (중지 시)"
     
   - id: reserved_instances_vm

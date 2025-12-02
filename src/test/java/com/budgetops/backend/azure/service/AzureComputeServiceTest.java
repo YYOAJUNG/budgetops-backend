@@ -190,5 +190,53 @@ class AzureComputeServiceTest {
 
         verify(tokenManager).invalidate("tenant-1", "client-1", "secret-1");
     }
+
+    @Test
+    @DisplayName("가상 머신 시작 요청을 전송한다")
+    void startVirtualMachine_success() {
+        AzureAccount account = new AzureAccount();
+        account.setId(1L);
+        account.setActive(Boolean.TRUE);
+        account.setSubscriptionId("sub-1");
+        account.setTenantId("tenant-1");
+        account.setClientId("client-1");
+        account.setClientSecretEnc("secret");
+
+        when(repository.findById(1L)).thenReturn(Optional.of(account));
+        when(tokenManager.getToken("tenant-1", "client-1", "secret"))
+                .thenReturn(AzureAccessToken.builder()
+                        .accessToken("token")
+                        .tokenType("Bearer")
+                        .expiresAt(java.time.OffsetDateTime.now().plusHours(1))
+                        .build());
+
+        service.startVirtualMachine(1L, "rg", "vm1");
+
+        verify(apiClient).startVirtualMachine("sub-1", "rg", "vm1", "token");
+    }
+
+    @Test
+    @DisplayName("가상 머신 정지 요청을 전송한다")
+    void stopVirtualMachine_success() {
+        AzureAccount account = new AzureAccount();
+        account.setId(1L);
+        account.setActive(Boolean.TRUE);
+        account.setSubscriptionId("sub-1");
+        account.setTenantId("tenant-1");
+        account.setClientId("client-1");
+        account.setClientSecretEnc("secret");
+
+        when(repository.findById(1L)).thenReturn(Optional.of(account));
+        when(tokenManager.getToken("tenant-1", "client-1", "secret"))
+                .thenReturn(AzureAccessToken.builder()
+                        .accessToken("token")
+                        .tokenType("Bearer")
+                        .expiresAt(java.time.OffsetDateTime.now().plusHours(1))
+                        .build());
+
+        service.stopVirtualMachine(1L, "rg", "vm1", false);
+
+        verify(apiClient).powerOffVirtualMachine("sub-1", "rg", "vm1", "token", false);
+    }
 }
 

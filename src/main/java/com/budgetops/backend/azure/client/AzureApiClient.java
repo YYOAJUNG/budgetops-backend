@@ -12,8 +12,9 @@ import org.springframework.web.client.RestTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.time.OffsetDateTime;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.Map;
@@ -25,6 +26,9 @@ public class AzureApiClient {
 
     private static final String ARM_BASE_URL = "https://management.azure.com";
     private static final String SCOPE_MANAGEMENT = "https://management.azure.com/.default";
+    private static final String COMPUTE_API_VERSION = "2023-09-01";
+    private static final String METRICS_API_VERSION = "2023-10-01";
+    private static final DateTimeFormatter ISO_INSTANT = DateTimeFormatter.ISO_INSTANT;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
@@ -87,7 +91,7 @@ public class AzureApiClient {
     public JsonNode listVirtualMachines(String subscriptionId, String accessToken) {
         String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId + "/providers/Microsoft.Compute/virtualMachines";
         Map<String, String> params = new HashMap<>();
-        params.put("api-version", "2023-09-01");
+        params.put("api-version", COMPUTE_API_VERSION);
         return get(url, accessToken, params);
     }
 
@@ -97,7 +101,7 @@ public class AzureApiClient {
                 + "/providers/Microsoft.Compute/virtualMachines/" + vmName
                 + "/instanceView";
         Map<String, String> params = new HashMap<>();
-        params.put("api-version", "2023-09-01");
+        params.put("api-version", COMPUTE_API_VERSION);
         return get(url, accessToken, params);
     }
 
@@ -169,19 +173,18 @@ public class AzureApiClient {
         String baseUrl = ARM_BASE_URL + resourceId + "/providers/microsoft.insights/metrics";
 
         // 시간 범위 포맷: ISO 8601 형식 (예: 2023-12-01T10:00:00Z/2023-12-01T11:00:00Z)
-        // Instant.toString()은 이미 ISO-8601 형식이지만, Azure API는 Z 대신 00:00 형식을 요구할 수 있음
         String timespan = formatTimespan(startTime, endTime);
         
         // 메트릭 이름들 - Azure API는 공백을 인코딩하지 않고 그대로 전달해야 함
         // Azure API 유효 메트릭: Percentage CPU, Network In, Network Out, Available Memory Bytes, Available Memory Percentage
         String metricNames = "Percentage CPU,Network In Total,Network Out Total,Available Memory Percentage,Available Memory Bytes";
         
-        // interval 계산: 1시간이면 PT1H, 더 짧은 간격이 필요하면 조정
+        // interval 계산: 1시간이면 PT5M, 더 짧은 간격이 필요하면 조정
         String interval = hoursToQuery <= 1 ? "PT5M" : "PT1H"; // 1시간 이하면 5분 간격, 그 이상이면 1시간 간격
         
         // URL 수동 구성 - UriComponentsBuilder를 사용하여 자동 인코딩 (하지만 metricnames는 제외)
         UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(baseUrl);
-        builder.queryParam("api-version", "2023-10-01");
+        builder.queryParam("api-version", METRICS_API_VERSION);
         builder.queryParam("timespan", timespan);
         builder.queryParam("interval", interval);
         builder.queryParam("aggregation", "Average");
@@ -199,44 +202,30 @@ public class AzureApiClient {
      */
     private String formatTimespan(Instant startTime, Instant endTime) {
         // Azure API는 ISO-8601 형식을 요구하지만, 초 단위까지 표시
-        return startTime.toString() + "/" + endTime.toString();
+        return ISO_INSTANT.format(startTime) + "/" + ISO_INSTANT.format(endTime);
     }
     
     /**
-     * URL 컴포넌트 인코딩 (공백, 특수문자 등)
+     * 쿼리 파라미터가 이미 인코딩된 전체 URL을 그대로 사용해 GET 호출을 수행한다.
+     * Azure Metrics API와 같이 인코딩 방식에 민감한 엔드포인트에만 사용한다.
      */
-    private String encodeUrlComponent(String value) {
-        try {
-            return java.net.URLEncoder.encode(value, "UTF-8")
-                    .replace("+", "%20")  // 공백은 %20으로
-                    .replace("%2F", "/");  // 슬래시는 그대로 유지
-        } catch (java.io.UnsupportedEncodingException e) {
-            log.error("Failed to encode URL component: {}", value, e);
-            return value;
-        }
-    }
-    
-    
-    /**
-     * Raw URL로 GET 요청 (수동으로 구성한 URL 사용)
-     */
-    private JsonNode getRaw(String url, String accessToken) {
+    private JsonNode getRaw(String requestUrl, String accessToken) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(accessToken);
         
         try {
             ResponseEntity<String> response = restTemplate.exchange(
-                    url,
+                    requestUrl,
                     HttpMethod.GET,
                     new HttpEntity<>(headers),
                     String.class
             );
             return objectMapper.readTree(response.getBody());
         } catch (HttpStatusCodeException e) {
-            log.error("Azure GET 호출 실패: url={}, status={}, body={}", url, e.getStatusCode(), e.getResponseBodyAsString());
+            log.error("Azure GET 호출 실패: url={}, status={}, body={}", requestUrl, e.getStatusCode(), e.getResponseBodyAsString());
             throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
         } catch (Exception e) {
-            log.error("Azure GET 호출 중 알 수 없는 오류: url={}", url, e);
+            log.error("Azure GET 호출 중 알 수 없는 오류: url={}", requestUrl, e);
             throw new IllegalStateException("Azure API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
         }
     }
@@ -244,12 +233,15 @@ public class AzureApiClient {
     /**
      * Virtual Machine 중지 (Power Off)
      */
-    public void powerOffVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+    public void powerOffVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken, boolean skipShutdown) {
         String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
                 + "/resourceGroups/" + resourceGroup
                 + "/providers/Microsoft.Compute/virtualMachines/" + vmName + "/powerOff";
         Map<String, String> params = new HashMap<>();
         params.put("api-version", "2023-09-01");
+        if (skipShutdown) {
+            params.put("skipShutdown", "true");
+        }
         postWithoutResponse(url, accessToken, params, null);
     }
 
@@ -396,5 +388,6 @@ public class AzureApiClient {
         params.forEach(builder::queryParam);
         return builder.toUriString();
     }
+
 }
 

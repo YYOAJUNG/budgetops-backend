@@ -133,8 +133,11 @@ public class AIChatService {
         prompt.append("   - 예: '현재 CPU 사용률이 7일간 평균 15%이기 때문에, 더 작은 인스턴스 타입으로 변경하여 비용을 절감하세요.'\n\n");
         prompt.append("2. 리소스 기반 분석:\n");
         prompt.append("   - 위에 제공된 실제 리소스 현황을 기반으로 분석하세요.\n");
+        prompt.append("   - AWS, Azure, GCP, NCP 등 모든 CSP의 리소스와 비용 정보를 고려하여 답변하세요.\n");
         prompt.append("   - 특정 리소스나 계정에 대해 질문받으면, 해당 리소스의 실제 데이터를 참고하여 답변하세요.\n");
-        prompt.append("   - 리소스 이름, 타입, 상태 등 구체적인 정보를 활용하여 답변하세요.\n\n");
+        prompt.append("   - 리소스 이름, 타입, 상태 등 구체적인 정보를 활용하여 답변하세요.\n");
+        prompt.append("   - 중요: 특정 CSP의 비용 데이터가 없다고 해서 '비용 데이터가 없습니다'라고만 답변하지 말고, ");
+        prompt.append("해당 CSP의 리소스 현황을 기반으로 최적화 권고를 제시하세요.\n\n");
         prompt.append("3. 최적화 권고:\n");
         prompt.append("   - 규칙과 실제 리소스 데이터를 매칭하여 최적화 기회를 식별하세요.\n");
         prompt.append("   - 각 권고에는 구체적인 이유(리소스 상태, 메트릭 값 등)를 포함하세요.\n");
@@ -142,7 +145,8 @@ public class AIChatService {
         prompt.append("4. 답변 형식:\n");
         prompt.append("   - 답변은 한국어로 작성하세요.\n");
         prompt.append("   - 마크다운 문법을 사용하지 마세요 (---, ###, **, # 등 사용 금지).\n");
-        prompt.append("   - 제목이나 강조가 필요하면 줄바꿈과 일반 텍스트로 표현하세요.\n");
+        prompt.append("   - 일반 텍스트로만 작성하고, 줄바꿈으로 구조를 표현하세요.\n");
+        prompt.append("   - 친절하고 전문적인 톤을 유지하세요.");
         
         return prompt.toString();
     }
@@ -203,6 +207,7 @@ public class AIChatService {
             log.debug("Calling Gemini API: {}", url);
             log.debug("System prompt length: {} characters", systemPrompt.length());
             
+            @SuppressWarnings("unchecked")
             Map<String, Object> response;
             try {
                 response = webClient.post()

@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class ResourceAnalysisService {
-
+    
     private final AwsAccountRepository awsAccountRepository;
     private final AwsEc2Service awsEc2Service;
     private final AzureAccountRepository azureAccountRepository;
@@ -157,4 +157,3 @@ public class ResourceAnalysisService {
         Map<String, Map<String, List<NcpServerInstanceResponse>>> ncpResources;
     }
 }
-

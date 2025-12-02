@@ -39,11 +39,7 @@ public class BudgetController {
 
     @PostMapping("/alerts/check")
     public ResponseEntity<List<BudgetAlertResponse>> checkAlerts() {
-        return ResponseEntity.ok(
-                budgetService.checkAlert(getCurrentMemberId())
-                        .map(List::of)
-                        .orElse(List.of())
-        );
+        return ResponseEntity.ok(budgetService.checkAlerts(getCurrentMemberId()));
     }
 
     private Long getCurrentMemberId() {

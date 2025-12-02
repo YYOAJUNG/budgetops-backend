@@ -41,17 +41,18 @@ public class AzureComputeController {
             @RequestParam String resourceGroup
     ) {
         computeService.startVirtualMachine(accountId, vmName, resourceGroup);
-        return ResponseEntity.ok().build();
+        return ResponseEntity.accepted().build();
     }
 
     @PostMapping("/{vmName}/stop")
     public ResponseEntity<Void> stopVirtualMachine(
             @PathVariable Long accountId,
             @PathVariable String vmName,
-            @RequestParam String resourceGroup
+            @RequestParam String resourceGroup,
+            @RequestParam(required = false, defaultValue = "false") boolean skipShutdown
     ) {
-        computeService.stopVirtualMachine(accountId, vmName, resourceGroup);
-        return ResponseEntity.ok().build();
+        computeService.stopVirtualMachine(accountId, vmName, resourceGroup, skipShutdown);
+        return ResponseEntity.accepted().build();
     }
 
     @DeleteMapping("/{vmName}")
@@ -61,7 +62,7 @@ public class AzureComputeController {
             @RequestParam String resourceGroup
     ) {
         computeService.deleteVirtualMachine(accountId, vmName, resourceGroup);
-        return ResponseEntity.ok().build();
+        return ResponseEntity.noContent().build();
     }
 }
 
