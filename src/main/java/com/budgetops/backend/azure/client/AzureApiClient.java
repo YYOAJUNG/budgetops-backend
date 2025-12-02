@@ -11,7 +11,6 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -153,6 +152,33 @@ public class AzureApiClient {
         return post(url, accessToken, params, body);
     }
 
+    /**
+     * Azure VM 메트릭 조회 (간단한 버전 - ResourceAnalysisService에서 사용)
+     * @param subscriptionId 구독 ID
+     * @param resourceGroup 리소스 그룹
+     * @param vmName VM 이름
+     * @param accessToken 액세스 토큰
+     * @param hours 조회할 시간 범위 (시간)
+     * @return 메트릭 데이터 (JSON)
+     */
+    public JsonNode getVirtualMachineMetrics(String subscriptionId, String resourceGroup, String vmName, String accessToken, Integer hours) {
+        String resourceId = String.format("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s",
+                subscriptionId, resourceGroup, vmName);
+        
+        // 시간 범위 계산 (기본값: 7일 = 168시간)
+        int hoursToQuery = hours != null && hours > 0 ? hours : 168;
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(hoursToQuery, java.time.temporal.ChronoUnit.HOURS);
+        
+        // 메트릭 이름: CPU 사용률, 메모리 사용률 (Percentage Memory는 일부 VM에서만 사용 가능)
+        String metricNames = "Percentage CPU,Available Memory Bytes,Percentage Memory";
+        
+        return getVirtualMachineMetrics(resourceId, accessToken, startTime, endTime, Duration.ofHours(1), metricNames, "Average");
+    }
+
+    /**
+     * Azure VM 메트릭 조회 (상세 버전)
+     */
     public JsonNode getVirtualMachineMetrics(
             String resourceId,
             String accessToken,
