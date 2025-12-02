@@ -1,6 +1,7 @@
 package com.budgetops.backend.azure.controller;
 
 import com.budgetops.backend.azure.dto.AzureVirtualMachineResponse;
+import com.budgetops.backend.azure.dto.AzureVmMetricsResponse;
 import com.budgetops.backend.azure.service.AzureComputeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +22,16 @@ public class AzureComputeController {
             @RequestParam(required = false) String location
     ) {
         return ResponseEntity.ok(computeService.listVirtualMachines(accountId, location));
+    }
+
+    @GetMapping("/{vmName}/metrics")
+    public ResponseEntity<AzureVmMetricsResponse> getVirtualMachineMetrics(
+            @PathVariable Long accountId,
+            @PathVariable String vmName,
+            @RequestParam String resourceGroup,
+            @RequestParam(required = false, defaultValue = "1") Integer hours
+    ) {
+        return ResponseEntity.ok(computeService.getVirtualMachineMetrics(accountId, vmName, resourceGroup, hours));
     }
 }
 

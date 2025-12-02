@@ -13,6 +13,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.OffsetDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -144,6 +146,75 @@ public class AzureApiClient {
         params.put("api-version", "2023-08-01");
 
         return post(url, accessToken, params, body);
+    }
+
+    /**
+     * Virtual Machine 메트릭 조회
+     * @param subscriptionId 구독 ID
+     * @param resourceGroup 리소스 그룹 이름
+     * @param vmName VM 이름
+     * @param accessToken 액세스 토큰
+     * @param hours 조회할 시간 범위 (기본값: 1시간)
+     * @return 메트릭 데이터 (JSON)
+     */
+    public JsonNode getVirtualMachineMetrics(String subscriptionId, String resourceGroup, String vmName, String accessToken, Integer hours) {
+        String resourceId = String.format("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s",
+                subscriptionId, resourceGroup, vmName);
+        
+        int hoursToQuery = hours != null && hours > 0 ? hours : 1;
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(hoursToQuery, ChronoUnit.HOURS);
+        
+        // Azure Monitor API 엔드포인트
+        String baseUrl = ARM_BASE_URL + resourceId + "/providers/microsoft.insights/metrics";
+        
+        // 시간 범위 포맷: ISO 8601 형식 (예: 2023-12-01T10:00:00Z/2023-12-01T11:00:00Z)
+        String timespan = startTime.toString() + "/" + endTime.toString();
+        
+        // 메트릭 이름들
+        String metricNames = "Percentage CPU,Network In Total,Network Out Total,Percentage Memory,Available Memory Bytes";
+        
+        // URL 파라미터 구성
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-10-01");
+        params.put("timespan", timespan);
+        params.put("interval", "PT1H"); // 1시간 간격
+        params.put("aggregation", "Average");
+        params.put("metricNamespace", "microsoft.compute/virtualmachines");
+        params.put("metricnames", metricNames);
+        
+        // UriComponentsBuilder를 사용하여 URL 구성 (자동 인코딩)
+        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(baseUrl);
+        params.forEach(builder::queryParam);
+        String requestUrl = builder.toUriString();
+        
+        log.debug("Azure metrics request URL: {}", requestUrl);
+        
+        return getRaw(requestUrl, accessToken);
+    }
+    
+    /**
+     * Raw URL로 GET 요청 (수동으로 구성한 URL 사용)
+     */
+    private JsonNode getRaw(String url, String accessToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    new HttpEntity<>(headers),
+                    String.class
+            );
+            return objectMapper.readTree(response.getBody());
+        } catch (HttpStatusCodeException e) {
+            log.error("Azure GET 호출 실패: url={}, status={}, body={}", url, e.getStatusCode(), e.getResponseBodyAsString());
+            throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+        } catch (Exception e) {
+            log.error("Azure GET 호출 중 알 수 없는 오류: url={}", url, e);
+            throw new IllegalStateException("Azure API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
+        }
     }
 
     private JsonNode get(String url, String accessToken, Map<String, String> params) {

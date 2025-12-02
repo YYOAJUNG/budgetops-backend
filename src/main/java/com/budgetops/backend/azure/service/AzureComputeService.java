@@ -3,6 +3,7 @@ package com.budgetops.backend.azure.service;
 import com.budgetops.backend.azure.client.AzureApiClient;
 import com.budgetops.backend.azure.dto.AzureAccessToken;
 import com.budgetops.backend.azure.dto.AzureVirtualMachineResponse;
+import com.budgetops.backend.azure.dto.AzureVmMetricsResponse;
 import com.budgetops.backend.azure.entity.AzureAccount;
 import com.budgetops.backend.azure.repository.AzureAccountRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -272,6 +273,125 @@ public class AzureComputeService {
         }
         String[] parts = resourceId.split("/");
         return parts.length > 0 ? parts[parts.length - 1] : "";
+    }
+
+    @Transactional(readOnly = true)
+    public AzureVmMetricsResponse getVirtualMachineMetrics(Long accountId, String vmName, String resourceGroup, Integer hours) {
+        AzureAccount account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new IllegalArgumentException("Azure 계정을 찾을 수 없습니다."));
+
+        if (!Boolean.TRUE.equals(account.getActive())) {
+            throw new IllegalStateException("비활성화된 Azure 계정입니다.");
+        }
+
+        if (resourceGroup == null || resourceGroup.isBlank()) {
+            throw new IllegalArgumentException("Resource group이 필요합니다.");
+        }
+
+        AzureAccessToken token = tokenManager.getToken(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+        JsonNode metricsResponse;
+        try {
+            metricsResponse = apiClient.getVirtualMachineMetrics(
+                    account.getSubscriptionId(),
+                    resourceGroup,
+                    vmName,
+                    token.getAccessToken(),
+                    hours
+            );
+        } catch (Exception e) {
+            tokenManager.invalidate(account.getTenantId(), account.getClientId(), account.getClientSecretEnc());
+            log.error("Failed to fetch Azure VM metrics for {}: {}", vmName, e.getMessage(), e);
+            throw new IllegalStateException("Azure VM 메트릭 조회 실패: " + e.getMessage(), e);
+        }
+
+        return parseMetricsResponse(metricsResponse, vmName, resourceGroup);
+    }
+
+    private AzureVmMetricsResponse parseMetricsResponse(JsonNode response, String vmName, String resourceGroup) {
+        List<AzureVmMetricsResponse.MetricDataPoint> cpuMetrics = new ArrayList<>();
+        List<AzureVmMetricsResponse.MetricDataPoint> networkInMetrics = new ArrayList<>();
+        List<AzureVmMetricsResponse.MetricDataPoint> networkOutMetrics = new ArrayList<>();
+        List<AzureVmMetricsResponse.MetricDataPoint> memoryMetrics = new ArrayList<>();
+
+        JsonNode value = response.path("value");
+        if (!value.isArray()) {
+            log.warn("Azure metrics response does not contain value array");
+            return AzureVmMetricsResponse.builder()
+                    .vmName(vmName)
+                    .resourceGroup(resourceGroup)
+                    .cpuUtilization(cpuMetrics)
+                    .networkIn(networkInMetrics)
+                    .networkOut(networkOutMetrics)
+                    .memoryUtilization(memoryMetrics)
+                    .build();
+        }
+
+        for (JsonNode metric : value) {
+            String metricName = metric.path("name").path("value").asText("");
+            JsonNode timeseries = metric.path("timeseries");
+            if (!timeseries.isArray() || timeseries.size() == 0) {
+                continue;
+            }
+
+            JsonNode data = timeseries.get(0).path("data");
+            if (!data.isArray()) {
+                continue;
+            }
+
+            List<AzureVmMetricsResponse.MetricDataPoint> targetList = null;
+            String unit = metric.path("unit").asText("");
+
+            switch (metricName) {
+                case "Percentage CPU":
+                    targetList = cpuMetrics;
+                    unit = "Percent";
+                    break;
+                case "Network In Total":
+                    targetList = networkInMetrics;
+                    unit = "Bytes";
+                    break;
+                case "Network Out Total":
+                    targetList = networkOutMetrics;
+                    unit = "Bytes";
+                    break;
+                case "Percentage Memory":
+                case "Available Memory Bytes":
+                    targetList = memoryMetrics;
+                    if ("Available Memory Bytes".equals(metricName)) {
+                        unit = "Bytes";
+                    } else {
+                        unit = "Percent";
+                    }
+                    break;
+                default:
+                    continue;
+            }
+
+            if (targetList != null) {
+                for (JsonNode dataPoint : data) {
+                    String timestamp = dataPoint.path("timeStamp").asText("");
+                    JsonNode average = dataPoint.path("average");
+                    Double metricValue = average.isMissingNode() ? null : average.asDouble(0.0);
+
+                    if (timestamp != null && !timestamp.isBlank() && metricValue != null) {
+                        targetList.add(AzureVmMetricsResponse.MetricDataPoint.builder()
+                                .timestamp(timestamp)
+                                .value(metricValue)
+                                .unit(unit)
+                                .build());
+                    }
+                }
+            }
+        }
+
+        return AzureVmMetricsResponse.builder()
+                .vmName(vmName)
+                .resourceGroup(resourceGroup)
+                .cpuUtilization(cpuMetrics)
+                .networkIn(networkInMetrics)
+                .networkOut(networkOutMetrics)
+                .memoryUtilization(memoryMetrics)
+                .build();
     }
 
     private record NetworkInfo(String privateIp, String publicIp) {
