@@ -12,10 +12,10 @@ import org.springframework.web.client.RestTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -153,106 +153,66 @@ public class AzureApiClient {
     }
 
     /**
-     * Azure VM 메트릭 조회 (간단한 버전 - ResourceAnalysisService에서 사용)
+     * Virtual Machine 메트릭 조회
      * @param subscriptionId 구독 ID
-     * @param resourceGroup 리소스 그룹
+     * @param resourceGroup 리소스 그룹 이름
      * @param vmName VM 이름
      * @param accessToken 액세스 토큰
-     * @param hours 조회할 시간 범위 (시간)
+     * @param hours 조회할 시간 범위 (기본값: 1시간)
      * @return 메트릭 데이터 (JSON)
      */
     public JsonNode getVirtualMachineMetrics(String subscriptionId, String resourceGroup, String vmName, String accessToken, Integer hours) {
         String resourceId = String.format("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s",
                 subscriptionId, resourceGroup, vmName);
         
-        // 시간 범위 계산 (기본값: 7일 = 168시간)
-        int hoursToQuery = hours != null && hours > 0 ? hours : 168;
+        int hoursToQuery = hours != null && hours > 0 ? hours : 1;
         Instant endTime = Instant.now();
-        Instant startTime = endTime.minus(hoursToQuery, java.time.temporal.ChronoUnit.HOURS);
+        Instant startTime = endTime.minus(hoursToQuery, ChronoUnit.HOURS);
         
-        // 메트릭 이름: CPU 사용률, 메모리 사용률 (Percentage Memory는 일부 VM에서만 사용 가능)
-        String metricNames = "Percentage CPU,Available Memory Bytes,Percentage Memory";
+        // Azure Monitor API 엔드포인트
+        String baseUrl = ARM_BASE_URL + resourceId + "/providers/microsoft.insights/metrics";
+
+        // 시간 범위 포맷: ISO 8601 형식 (예: 2023-12-01T10:00:00Z/2023-12-01T11:00:00Z)
+        String timespan = formatTimespan(startTime, endTime);
         
-        return getVirtualMachineMetrics(resourceId, accessToken, startTime, endTime, Duration.ofHours(1), metricNames, "Average");
-    }
-
-    /**
-     * Azure VM 메트릭 조회 (상세 버전)
-     */
-    public JsonNode getVirtualMachineMetrics(
-            String resourceId,
-            String accessToken,
-            Instant startTime,
-            Instant endTime,
-            Duration interval,
-            String metricNames,
-            String aggregations
-    ) {
-        String normalizedId = resourceId.startsWith("/") ? resourceId : "/" + resourceId;
-        String baseUrl = ARM_BASE_URL + normalizedId + "/providers/microsoft.insights/metrics";
-
-        // Azure Metrics API가 metricnames 값을 다시 디코딩하면서 이중 인코딩된 값
-        // (예: Percentage%2520CPU)을 그대로 비교해 400을 반환하는 문제가 있어,
-        // 이 엔드포인트에 한해서는 쿼리 파라미터를 직접 구성해 추가 인코딩을 피한다.
-        StringBuilder urlBuilder = new StringBuilder(baseUrl);
-        urlBuilder.append("?api-version=").append(METRICS_API_VERSION);
-        urlBuilder.append("&timespan=").append(formatTimespan(startTime, endTime));
-        urlBuilder.append("&aggregation=").append(aggregations);
-        if (interval != null && !interval.isZero() && !interval.isNegative()) {
-            urlBuilder.append("&interval=").append(formatInterval(interval));
-        }
-        urlBuilder.append("&metricNamespace=microsoft.compute/virtualmachines");
-        if (metricNames != null && !metricNames.isBlank()) {
-            // 공백/콤마가 포함된 메트릭 이름을 그대로 전달하고 RestTemplate 한 번만 인코딩하도록 맡긴다.
-            // 이렇게 하면 Azure 측에서 디코딩 후 "Percentage CPU", "Network In Total" 등
-            // 유효한 메트릭 이름과 정상적으로 매칭된다.
-            urlBuilder.append("&metricnames=").append(metricNames);
-        }
-
-        String requestUrl = urlBuilder.toString();
+        // 메트릭 이름들 - Azure API는 공백을 인코딩하지 않고 그대로 전달해야 함
+        // Azure API 유효 메트릭: Percentage CPU, Network In, Network Out, Available Memory Bytes, Available Memory Percentage
+        String metricNames = "Percentage CPU,Network In Total,Network Out Total,Available Memory Percentage,Available Memory Bytes";
+        
+        // interval 계산: 1시간이면 PT5M, 더 짧은 간격이 필요하면 조정
+        String interval = hoursToQuery <= 1 ? "PT5M" : "PT1H"; // 1시간 이하면 5분 간격, 그 이상이면 1시간 간격
+        
+        // URL 수동 구성 - UriComponentsBuilder를 사용하여 자동 인코딩 (하지만 metricnames는 제외)
+        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(baseUrl);
+        builder.queryParam("api-version", METRICS_API_VERSION);
+        builder.queryParam("timespan", timespan);
+        builder.queryParam("interval", interval);
+        builder.queryParam("aggregation", "Average");
+        builder.queryParam("metricNamespace", "microsoft.compute/virtualmachines");
+        // metricnames는 공백을 인코딩하지 않고 그대로 추가
+        String requestUrl = builder.toUriString() + "&metricnames=" + metricNames;
+        
+        log.debug("Azure metrics request URL: {}", requestUrl);
+        
         return getRaw(requestUrl, accessToken);
     }
 
-    public void deleteVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
-        String baseUrl = ARM_BASE_URL + "/subscriptions/" + subscriptionId
-                + "/resourceGroups/" + resourceGroup
-                + "/providers/Microsoft.Compute/virtualMachines/" + vmName;
-
-        Map<String, String> params = new HashMap<>();
-        params.put("api-version", COMPUTE_API_VERSION);
-
-        delete(baseUrl, accessToken, params);
+    /**
+     * Azure API용 timespan 포맷팅
+     */
+    private String formatTimespan(Instant startTime, Instant endTime) {
+        // Azure API는 ISO-8601 형식을 요구하지만, 초 단위까지 표시
+        return ISO_INSTANT.format(startTime) + "/" + ISO_INSTANT.format(endTime);
     }
-
-    public void startVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
-        String url = buildVirtualMachineActionUrl(subscriptionId, resourceGroup, vmName, "start");
-        Map<String, String> params = new HashMap<>();
-        params.put("api-version", COMPUTE_API_VERSION);
-        post(url, accessToken, params, null);
-    }
-
-    public void powerOffVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken, boolean skipShutdown) {
-        String url = buildVirtualMachineActionUrl(subscriptionId, resourceGroup, vmName, "powerOff");
-        Map<String, String> params = new HashMap<>();
-        params.put("api-version", COMPUTE_API_VERSION);
-        if (skipShutdown) {
-            params.put("skipShutdown", "true");
-        }
-        post(url, accessToken, params, null);
-    }
-
-    public void deallocateVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
-        String url = buildVirtualMachineActionUrl(subscriptionId, resourceGroup, vmName, "deallocate");
-        Map<String, String> params = new HashMap<>();
-        params.put("api-version", COMPUTE_API_VERSION);
-        post(url, accessToken, params, null);
-    }
-
-    private JsonNode get(String url, String accessToken, Map<String, String> params) {
+    
+    /**
+     * 쿼리 파라미터가 이미 인코딩된 전체 URL을 그대로 사용해 GET 호출을 수행한다.
+     * Azure Metrics API와 같이 인코딩 방식에 민감한 엔드포인트에만 사용한다.
+     */
+    private JsonNode getRaw(String requestUrl, String accessToken) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(accessToken);
-
-        String requestUrl = withQueryParams(url, params);
+        
         try {
             ResponseEntity<String> response = restTemplate.exchange(
                     requestUrl,
@@ -270,17 +230,71 @@ public class AzureApiClient {
         }
     }
 
-    private void delete(String baseUrl, String accessToken, Map<String, String> params) {
+    /**
+     * Virtual Machine 중지 (Power Off)
+     */
+    public void powerOffVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken, boolean skipShutdown) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName + "/powerOff";
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-09-01");
+        if (skipShutdown) {
+            params.put("skipShutdown", "true");
+        }
+        postWithoutResponse(url, accessToken, params, null);
+    }
+
+    /**
+     * Virtual Machine 시작
+     */
+    public void startVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName + "/start";
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-09-01");
+        postWithoutResponse(url, accessToken, params, null);
+    }
+
+    /**
+     * Virtual Machine 할당 해제 (Deallocate)
+     */
+    public void deallocateVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName + "/deallocate";
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-09-01");
+        postWithoutResponse(url, accessToken, params, null);
+    }
+
+    /**
+     * Virtual Machine 삭제
+     */
+    public void deleteVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName;
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-09-01");
+        delete(url, accessToken, params);
+    }
+
+    /**
+     * DELETE 요청
+     */
+    private void delete(String url, String accessToken, Map<String, String> params) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(accessToken);
 
-        String requestUrl = withQueryParams(baseUrl, params);
+        String requestUrl = withQueryParams(url, params);
         try {
             restTemplate.exchange(
                     requestUrl,
                     HttpMethod.DELETE,
                     new HttpEntity<>(headers),
-                    String.class
+                    Void.class
             );
         } catch (HttpStatusCodeException e) {
             log.error("Azure DELETE 호출 실패: url={}, status={}, body={}", requestUrl, e.getStatusCode(), e.getResponseBodyAsString());
@@ -291,14 +305,11 @@ public class AzureApiClient {
         }
     }
 
-    /**
-     * 쿼리 파라미터가 이미 인코딩된 전체 URL을 그대로 사용해 GET 호출을 수행한다.
-     * Azure Metrics API와 같이 인코딩 방식에 민감한 엔드포인트에만 사용한다.
-     */
-    private JsonNode getRaw(String requestUrl, String accessToken) {
+    private JsonNode get(String url, String accessToken, Map<String, String> params) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(accessToken);
 
+        String requestUrl = withQueryParams(url, params);
         try {
             ResponseEntity<String> response = restTemplate.exchange(
                     requestUrl,
@@ -331,9 +342,35 @@ public class AzureApiClient {
             );
             String responseBody = response.getBody();
             if (responseBody == null || responseBody.isBlank()) {
+                // 응답 본문이 없는 경우 빈 JSON 객체 반환
                 return objectMapper.createObjectNode();
             }
             return objectMapper.readTree(responseBody);
+        } catch (HttpStatusCodeException e) {
+            log.error("Azure POST 호출 실패: url={}, status={}, body={}", requestUrl, e.getStatusCode(), e.getResponseBodyAsString());
+            throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+        } catch (Exception e) {
+            log.error("Azure POST 호출 중 알 수 없는 오류: url={}", requestUrl, e);
+            throw new IllegalStateException("Azure API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 응답 본문이 없는 POST 요청 (VM 중지/시작 등)
+     */
+    private void postWithoutResponse(String url, String accessToken, Map<String, String> params, Object body) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        String requestUrl = withQueryParams(url, params);
+        try {
+            restTemplate.exchange(
+                    requestUrl,
+                    HttpMethod.POST,
+                    new HttpEntity<>(body, headers),
+                    Void.class
+            );
         } catch (HttpStatusCodeException e) {
             log.error("Azure POST 호출 실패: url={}, status={}, body={}", requestUrl, e.getStatusCode(), e.getResponseBodyAsString());
             throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
@@ -352,20 +389,5 @@ public class AzureApiClient {
         return builder.toUriString();
     }
 
-    private String buildVirtualMachineActionUrl(String subscriptionId, String resourceGroup, String vmName, String action) {
-        return ARM_BASE_URL + "/subscriptions/" + subscriptionId
-                + "/resourceGroups/" + resourceGroup
-                + "/providers/Microsoft.Compute/virtualMachines/" + vmName
-                + "/" + action;
-    }
-
-    private String formatTimespan(Instant start, Instant end) {
-        return ISO_INSTANT.format(start) + "/" + ISO_INSTANT.format(end);
-    }
-
-    private String formatInterval(Duration duration) {
-        long minutes = Math.max(1, duration.toMinutes());
-        return "PT" + minutes + "M";
-    }
 }
 

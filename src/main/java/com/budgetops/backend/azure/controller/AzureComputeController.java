@@ -3,7 +3,6 @@ package com.budgetops.backend.azure.controller;
 import com.budgetops.backend.azure.dto.AzureVirtualMachineResponse;
 import com.budgetops.backend.azure.dto.AzureVmMetricsResponse;
 import com.budgetops.backend.azure.service.AzureComputeService;
-import com.budgetops.backend.azure.service.AzureMetricsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,7 +15,6 @@ import java.util.List;
 public class AzureComputeController {
 
     private final AzureComputeService computeService;
-    private final AzureMetricsService metricsService;
 
     @GetMapping
     public ResponseEntity<List<AzureVirtualMachineResponse>> listVirtualMachines(
@@ -31,9 +29,9 @@ public class AzureComputeController {
             @PathVariable Long accountId,
             @PathVariable String vmName,
             @RequestParam String resourceGroup,
-            @RequestParam(required = false) Integer hours
+            @RequestParam(required = false, defaultValue = "1") Integer hours
     ) {
-        return ResponseEntity.ok(metricsService.getMetrics(accountId, resourceGroup, vmName, hours));
+        return ResponseEntity.ok(computeService.getVirtualMachineMetrics(accountId, vmName, resourceGroup, hours));
     }
 
     @PostMapping("/{vmName}/start")
@@ -42,7 +40,7 @@ public class AzureComputeController {
             @PathVariable String vmName,
             @RequestParam String resourceGroup
     ) {
-        computeService.startVirtualMachine(accountId, resourceGroup, vmName);
+        computeService.startVirtualMachine(accountId, vmName, resourceGroup);
         return ResponseEntity.accepted().build();
     }
 
@@ -51,9 +49,9 @@ public class AzureComputeController {
             @PathVariable Long accountId,
             @PathVariable String vmName,
             @RequestParam String resourceGroup,
-            @RequestParam(defaultValue = "false") boolean skipShutdown
+            @RequestParam(required = false, defaultValue = "false") boolean skipShutdown
     ) {
-        computeService.stopVirtualMachine(accountId, resourceGroup, vmName, skipShutdown);
+        computeService.stopVirtualMachine(accountId, vmName, resourceGroup, skipShutdown);
         return ResponseEntity.accepted().build();
     }
 
@@ -63,7 +61,7 @@ public class AzureComputeController {
             @PathVariable String vmName,
             @RequestParam String resourceGroup
     ) {
-        computeService.deleteVirtualMachine(accountId, resourceGroup, vmName);
+        computeService.deleteVirtualMachine(accountId, vmName, resourceGroup);
         return ResponseEntity.noContent().build();
     }
 }
