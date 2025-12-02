@@ -167,7 +167,7 @@ public class AzureApiClient {
         
         // Azure Monitor API 엔드포인트
         String baseUrl = ARM_BASE_URL + resourceId + "/providers/microsoft.insights/metrics";
-        
+
         // 시간 범위 포맷: ISO 8601 형식 (예: 2023-12-01T10:00:00Z/2023-12-01T11:00:00Z)
         // Instant.toString()은 이미 ISO-8601 형식이지만, Azure API는 Z 대신 00:00 형식을 요구할 수 있음
         String timespan = formatTimespan(startTime, endTime);
@@ -193,7 +193,7 @@ public class AzureApiClient {
         
         return getRaw(requestUrl, accessToken);
     }
-    
+
     /**
      * Azure API용 timespan 포맷팅
      */
@@ -237,6 +237,78 @@ public class AzureApiClient {
             throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
         } catch (Exception e) {
             log.error("Azure GET 호출 중 알 수 없는 오류: url={}", url, e);
+            throw new IllegalStateException("Azure API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Virtual Machine 중지 (Power Off)
+     */
+    public void powerOffVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName + "/powerOff";
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-09-01");
+        post(url, accessToken, params, null);
+    }
+
+    /**
+     * Virtual Machine 시작
+     */
+    public void startVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName + "/start";
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-09-01");
+        post(url, accessToken, params, null);
+    }
+
+    /**
+     * Virtual Machine 할당 해제 (Deallocate)
+     */
+    public void deallocateVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName + "/deallocate";
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-09-01");
+        post(url, accessToken, params, null);
+    }
+
+    /**
+     * Virtual Machine 삭제
+     */
+    public void deleteVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName;
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-09-01");
+        delete(url, accessToken, params);
+    }
+
+    /**
+     * DELETE 요청
+     */
+    private void delete(String url, String accessToken, Map<String, String> params) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+
+        String requestUrl = withQueryParams(url, params);
+        try {
+            restTemplate.exchange(
+                    requestUrl,
+                    HttpMethod.DELETE,
+                    new HttpEntity<>(headers),
+                    Void.class
+            );
+        } catch (HttpStatusCodeException e) {
+            log.error("Azure DELETE 호출 실패: url={}, status={}, body={}", requestUrl, e.getStatusCode(), e.getResponseBodyAsString());
+            throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+        } catch (Exception e) {
+            log.error("Azure DELETE 호출 중 알 수 없는 오류: url={}", requestUrl, e);
             throw new IllegalStateException("Azure API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
         }
     }

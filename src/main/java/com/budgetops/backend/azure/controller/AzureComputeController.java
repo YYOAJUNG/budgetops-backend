@@ -33,5 +33,35 @@ public class AzureComputeController {
     ) {
         return ResponseEntity.ok(computeService.getVirtualMachineMetrics(accountId, vmName, resourceGroup, hours));
     }
+
+    @PostMapping("/{vmName}/start")
+    public ResponseEntity<Void> startVirtualMachine(
+            @PathVariable Long accountId,
+            @PathVariable String vmName,
+            @RequestParam String resourceGroup
+    ) {
+        computeService.startVirtualMachine(accountId, vmName, resourceGroup);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{vmName}/stop")
+    public ResponseEntity<Void> stopVirtualMachine(
+            @PathVariable Long accountId,
+            @PathVariable String vmName,
+            @RequestParam String resourceGroup
+    ) {
+        computeService.stopVirtualMachine(accountId, vmName, resourceGroup);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/{vmName}")
+    public ResponseEntity<Void> deleteVirtualMachine(
+            @PathVariable Long accountId,
+            @PathVariable String vmName,
+            @RequestParam String resourceGroup
+    ) {
+        computeService.deleteVirtualMachine(accountId, vmName, resourceGroup);
+        return ResponseEntity.ok().build();
+    }
 }
 
