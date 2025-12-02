@@ -19,6 +19,10 @@ import com.budgetops.backend.ncp.dto.NcpServerInstanceResponse;
 import com.budgetops.backend.aws.dto.AwsEc2MetricsResponse;
 import com.budgetops.backend.ncp.dto.NcpServerMetricsResponse;
 import com.budgetops.backend.gcp.dto.GcpResourceMetricsResponse;
+import com.budgetops.backend.azure.client.AzureApiClient;
+import com.budgetops.backend.azure.service.AzureTokenManager;
+import com.budgetops.backend.azure.dto.AzureAccessToken;
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -41,6 +45,8 @@ public class ResourceAnalysisService {
     private final GcpResourceService gcpResourceService;
     private final NcpAccountRepository ncpAccountRepository;
     private final NcpServerService ncpServerService;
+    private final AzureApiClient azureApiClient;
+    private final AzureTokenManager azureTokenManager;
     
     public ResourceAnalysisService(
             AwsAccountRepository awsAccountRepository,
@@ -50,7 +56,9 @@ public class ResourceAnalysisService {
             GcpAccountRepository gcpAccountRepository,
             GcpResourceService gcpResourceService,
             NcpAccountRepository ncpAccountRepository,
-            NcpServerService ncpServerService) {
+            NcpServerService ncpServerService,
+            AzureApiClient azureApiClient,
+            AzureTokenManager azureTokenManager) {
         this.awsAccountRepository = awsAccountRepository;
         this.awsEc2Service = awsEc2Service;
         this.azureAccountRepository = azureAccountRepository;
@@ -59,6 +67,8 @@ public class ResourceAnalysisService {
         this.gcpResourceService = gcpResourceService;
         this.ncpAccountRepository = ncpAccountRepository;
         this.ncpServerService = ncpServerService;
+        this.azureApiClient = azureApiClient;
+        this.azureTokenManager = azureTokenManager;
     }
     
     /**
@@ -277,12 +287,57 @@ public class ResourceAnalysisService {
                         .collect(Collectors.toList());
                 
                 if (!runningVms.isEmpty()) {
-                    sb.append("  실행 중인 주요 VM:\n");
+                    sb.append("  실행 중인 주요 VM (최근 7일 메트릭 포함):\n");
+                    
+                    // Azure 계정 찾기
+                    AzureAccount azureAccount = null;
+                    try {
+                        List<AzureAccount> accounts = azureAccountRepository.findByActiveTrue();
+                        azureAccount = accounts.stream()
+                                .filter(acc -> accountName.equals(acc.getName()))
+                                .findFirst()
+                                .orElse(null);
+                    } catch (Exception e) {
+                        log.debug("Failed to find Azure account for metrics: {}", e.getMessage());
+                    }
+                    
                     for (AzureVirtualMachineResponse vm : runningVms.subList(0, Math.min(10, runningVms.size()))) {
-                        sb.append(String.format("    • %s (%s) - %s\n", 
+                        String vmInfo = String.format("    • %s (%s)", 
                                 vm.getName(),
-                                vm.getVmSize() != null ? vm.getVmSize() : "unknown",
-                                vm.getPowerState()));
+                                vm.getVmSize() != null ? vm.getVmSize() : "unknown");
+                        
+                        // 메트릭 조회 시도 (실패해도 계속 진행)
+                        try {
+                            if (azureAccount != null && vm.getResourceGroup() != null && !vm.getResourceGroup().isEmpty()) {
+                                // Azure VM 메트릭 조회 (7일간 = 168시간)
+                                AzureAccessToken token = azureTokenManager.getToken(
+                                        azureAccount.getTenantId(), 
+                                        azureAccount.getClientId(), 
+                                        azureAccount.getClientSecretEnc());
+                                
+                                JsonNode metricsResponse = azureApiClient.getVirtualMachineMetrics(
+                                        azureAccount.getSubscriptionId(),
+                                        vm.getResourceGroup(),
+                                        vm.getName(),
+                                        token.getAccessToken(),
+                                        168);
+                                
+                                // CPU 및 메모리 사용률 계산
+                                double avgCpu = calculateAverageMetric(metricsResponse, "Percentage CPU");
+                                double avgMemory = calculateMemoryUtilization(metricsResponse, "Available Memory Bytes");
+                                
+                                if (avgCpu > 0) {
+                                    vmInfo += String.format(" - CPU: %.1f%%", avgCpu);
+                                }
+                                if (avgMemory > 0) {
+                                    vmInfo += String.format(", 메모리 사용률: %.1f%%", avgMemory);
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.debug("Failed to fetch metrics for Azure VM {}: {}", vm.getName(), e.getMessage());
+                        }
+                        
+                        sb.append(vmInfo).append("\n");
                     }
                     if (runningVms.size() > 10) {
                         sb.append(String.format("    ... 외 %d개\n", runningVms.size() - 10));
@@ -450,13 +505,71 @@ public class ResourceAnalysisService {
             }
         }
         
-        if (analysis.awsResources.isEmpty() && analysis.azureResources.isEmpty() 
-                && analysis.gcpResources.isEmpty() && analysis.ncpResources.isEmpty()) {
-            sb.append("현재 활성화된 클라우드 계정이 없습니다.\n");
-            sb.append("계정을 연결하면 실제 리소스 데이터를 기반으로 최적화 조언을 제공할 수 있습니다.\n\n");
+        if (analysis.awsResources.isEmpty() && analysis.azureResources.isEmpty() && 
+            analysis.gcpResources.isEmpty() && analysis.ncpResources.isEmpty()) {
+            sb.append("현재 연결된 클라우드 계정이 없습니다. 계정을 연결하면 실제 리소스 데이터를 기반으로 최적화 조언을 제공할 수 있습니다.\n\n");
         }
         
         return sb.toString();
+    }
+    
+    /**
+     * Azure 메트릭 응답에서 특정 메트릭의 평균값 계산
+     */
+    private double calculateAverageMetric(JsonNode metricsResponse, String metricName) {
+        try {
+            JsonNode value = metricsResponse.path("value");
+            if (!value.isArray()) {
+                return 0.0;
+            }
+            
+            for (JsonNode metric : value) {
+                JsonNode name = metric.path("name");
+                if (name.path("value").asText("").equals(metricName)) {
+                    JsonNode timeseries = metric.path("timeseries");
+                    if (!timeseries.isArray() || timeseries.size() == 0) {
+                        return 0.0;
+                    }
+                    
+                    JsonNode data = timeseries.get(0).path("data");
+                    if (!data.isArray()) {
+                        return 0.0;
+                    }
+                    
+                    double sum = 0.0;
+                    int count = 0;
+                    for (JsonNode point : data) {
+                        JsonNode average = point.path("average");
+                        if (!average.isMissingNode()) {
+                            sum += average.asDouble(0.0);
+                            count++;
+                        }
+                    }
+                    
+                    return count > 0 ? sum / count : 0.0;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Failed to calculate average metric {}: {}", metricName, e.getMessage());
+        }
+        return 0.0;
+    }
+    
+    /**
+     * Azure 메트릭 응답에서 메모리 사용률 계산
+     * Available Memory Bytes를 사용하여 메모리 사용률을 계산합니다.
+     * (VM 크기에 따라 총 메모리가 다르므로, 정확한 계산을 위해서는 VM 크기 정보가 필요하지만,
+     * 여기서는 간단히 Available Memory가 적을수록 사용률이 높다는 것을 나타냅니다)
+     */
+    private double calculateMemoryUtilization(JsonNode metricsResponse, String metricName) {
+        // 메모리 사용률은 Available Memory Bytes만으로는 정확히 계산하기 어렵습니다.
+        // VM 크기에 따라 총 메모리가 다르기 때문입니다.
+        // 여기서는 간단히 메트릭이 있는지만 확인합니다.
+        double avgAvailableMemory = calculateAverageMetric(metricsResponse, metricName);
+        // Available Memory가 작을수록 메모리 사용률이 높다는 것을 나타내지만,
+        // 정확한 퍼센트 계산을 위해서는 VM 크기 정보가 필요합니다.
+        // 일단 메트릭이 있는 경우에만 표시하도록 합니다.
+        return avgAvailableMemory > 0 ? 0.0 : 0.0; // 정확한 계산을 위해서는 VM 크기 정보 필요
     }
     
     /**

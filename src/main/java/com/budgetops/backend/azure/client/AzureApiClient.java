@@ -146,6 +146,46 @@ public class AzureApiClient {
         return post(url, accessToken, params, body);
     }
 
+    /**
+     * Azure VM 메트릭 조회
+     * @param subscriptionId 구독 ID
+     * @param resourceGroup 리소스 그룹
+     * @param vmName VM 이름
+     * @param accessToken 액세스 토큰
+     * @param hours 조회할 시간 범위 (시간)
+     * @return 메트릭 데이터 (JSON)
+     */
+    public JsonNode getVirtualMachineMetrics(String subscriptionId, String resourceGroup, String vmName, String accessToken, Integer hours) {
+        String resourceId = String.format("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s",
+                subscriptionId, resourceGroup, vmName);
+        
+        // 시간 범위 계산 (기본값: 7일 = 168시간)
+        int hoursToQuery = hours != null && hours > 0 ? hours : 168;
+        java.time.Instant endTime = java.time.Instant.now();
+        java.time.Instant startTime = endTime.minus(hoursToQuery, java.time.temporal.ChronoUnit.HOURS);
+        
+        // Azure Monitor API 엔드포인트
+        String url = ARM_BASE_URL + resourceId + "/providers/microsoft.insights/metrics";
+        
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2018-01-01");
+        
+        // timespan 형식: startTime/endTime (ISO 8601)
+        String timespan = startTime.toString() + "/" + endTime.toString();
+        params.put("timespan", timespan);
+        
+        // 메트릭 이름: CPU 사용률, 메모리 사용률
+        params.put("metricnames", "Percentage CPU,Available Memory Bytes");
+        
+        // 집계 방식: Average
+        params.put("aggregation", "Average");
+        
+        // 간격: 1시간
+        params.put("interval", "PT1H");
+        
+        return get(url, accessToken, params);
+    }
+
     private JsonNode get(String url, String accessToken, Map<String, String> params) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(accessToken);
