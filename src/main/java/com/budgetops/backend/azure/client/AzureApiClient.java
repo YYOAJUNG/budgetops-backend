@@ -172,23 +172,22 @@ public class AzureApiClient {
         // Instant.toString()은 이미 ISO-8601 형식이지만, Azure API는 Z 대신 00:00 형식을 요구할 수 있음
         String timespan = formatTimespan(startTime, endTime);
         
-        // 메트릭 이름들 - Azure API는 공백을 %20으로 인코딩하되 쉼표는 인코딩하지 않음
+        // 메트릭 이름들 - Azure API는 공백을 인코딩하지 않고 그대로 전달해야 함
         String metricNames = "Percentage CPU,Network In Total,Network Out Total,Percentage Memory,Available Memory Bytes";
         
         // interval 계산: 1시간이면 PT1H, 더 짧은 간격이 필요하면 조정
         String interval = hoursToQuery <= 1 ? "PT5M" : "PT1H"; // 1시간 이하면 5분 간격, 그 이상이면 1시간 간격
         
-        // URL 수동 구성 (metricnames는 특별한 인코딩 필요)
-        StringBuilder urlBuilder = new StringBuilder(baseUrl);
-        urlBuilder.append("?api-version=2023-10-01");
-        urlBuilder.append("&timespan=").append(encodeUrlComponent(timespan));
-        urlBuilder.append("&interval=").append(interval);
-        urlBuilder.append("&aggregation=Average");
-        urlBuilder.append("&metricNamespace=microsoft.compute/virtualmachines");
-        // metricnames: 공백만 %20으로 인코딩, 쉼표는 그대로 유지
-        urlBuilder.append("&metricnames=").append(encodeMetricNames(metricNames));
+        // URL 수동 구성 - UriComponentsBuilder를 사용하여 자동 인코딩 (하지만 metricnames는 제외)
+        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(baseUrl);
+        builder.queryParam("api-version", "2023-10-01");
+        builder.queryParam("timespan", timespan);
+        builder.queryParam("interval", interval);
+        builder.queryParam("aggregation", "Average");
+        builder.queryParam("metricNamespace", "microsoft.compute/virtualmachines");
+        // metricnames는 공백을 인코딩하지 않고 그대로 추가
+        String requestUrl = builder.toUriString() + "&metricnames=" + metricNames;
         
-        String requestUrl = urlBuilder.toString();
         log.debug("Azure metrics request URL: {}", requestUrl);
         
         return getRaw(requestUrl, accessToken);
@@ -216,14 +215,6 @@ public class AzureApiClient {
         }
     }
     
-    /**
-     * Azure metricnames 파라미터 인코딩
-     * 공백은 %20으로 인코딩하되 쉼표는 그대로 유지
-     */
-    private String encodeMetricNames(String metricNames) {
-        // 공백을 %20으로 변환하되 쉼표는 그대로 유지
-        return metricNames.replace(" ", "%20");
-    }
     
     /**
      * Raw URL로 GET 요청 (수동으로 구성한 URL 사용)
