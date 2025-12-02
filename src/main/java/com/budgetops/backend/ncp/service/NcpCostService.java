@@ -211,6 +211,27 @@ public class NcpCostService {
     }
 
     /**
+     * 특정 회원의 NCP 계정별 월별 비용 목록
+     */
+    public List<AccountMonthlyCost> getMemberAccountsMonthlyCost(Long memberId, String month) {
+        List<NcpAccount> accounts = accountRepository.findByOwnerIdAndActiveTrue(memberId);
+        List<AccountMonthlyCost> result = new ArrayList<>();
+        if (accounts.isEmpty()) {
+            return result;
+        }
+        for (NcpAccount account : accounts) {
+            try {
+                NcpCostSummary summary = getCostSummary(account.getId(), memberId, month);
+                double total = summary.getTotalCost() != null ? summary.getTotalCost() : 0.0;
+                result.add(new AccountMonthlyCost(account.getId(), account.getName(), total, summary.getCurrency()));
+            } catch (Exception e) {
+                log.warn("Failed to fetch NCP cost for account {}: {}", account.getId(), e.getMessage());
+            }
+        }
+        return result;
+    }
+
+    /**
      * 월별 조회 파라미터 생성
      */
     private Map<String, String> buildMonthlyParams(String startMonth, String endMonth) {
@@ -219,6 +240,17 @@ public class NcpCostService {
         params.put("endMonth", endMonth);
         params.put("responseFormatType", RESPONSE_FORMAT_JSON);
         return params;
+    }
+
+    /**
+     * 회원별 NCP 계정 월별 비용을 표현하는 DTO
+     */
+    public record AccountMonthlyCost(
+            Long accountId,
+            String accountName,
+            double totalCost,
+            String currency
+    ) {
     }
 
     /**
