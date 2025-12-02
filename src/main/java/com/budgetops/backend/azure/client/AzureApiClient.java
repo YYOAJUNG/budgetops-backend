@@ -173,7 +173,8 @@ public class AzureApiClient {
         String timespan = formatTimespan(startTime, endTime);
         
         // 메트릭 이름들 - Azure API는 공백을 인코딩하지 않고 그대로 전달해야 함
-        String metricNames = "Percentage CPU,Network In Total,Network Out Total,Percentage Memory,Available Memory Bytes";
+        // Azure API 유효 메트릭: Percentage CPU, Network In, Network Out, Available Memory Bytes, Available Memory Percentage
+        String metricNames = "Percentage CPU,Network In Total,Network Out Total,Available Memory Percentage,Available Memory Bytes";
         
         // interval 계산: 1시간이면 PT1H, 더 짧은 간격이 필요하면 조정
         String interval = hoursToQuery <= 1 ? "PT5M" : "PT1H"; // 1시간 이하면 5분 간격, 그 이상이면 1시간 간격

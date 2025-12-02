@@ -354,7 +354,7 @@ public class AzureComputeService {
                     targetList = networkOutMetrics;
                     unit = "Bytes";
                     break;
-                case "Percentage Memory":
+                case "Available Memory Percentage":
                 case "Available Memory Bytes":
                     targetList = memoryMetrics;
                     if ("Available Memory Bytes".equals(metricName)) {
