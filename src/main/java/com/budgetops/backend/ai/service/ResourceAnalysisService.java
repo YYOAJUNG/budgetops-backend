@@ -233,8 +233,17 @@ public class ResourceAnalysisService {
                                             .average()
                                             .orElse(0.0);
                                     
+                                    // 메모리 사용률 평균 계산 (CloudWatch Agent가 설치된 경우에만 사용 가능)
+                                    double avgMemory = metrics.getMemoryUtilization().stream()
+                                            .mapToDouble(m -> m.getValue() != null ? m.getValue() : 0.0)
+                                            .average()
+                                            .orElse(0.0);
+                                    
                                     if (avgCpu > 0) {
                                         instanceInfo += String.format(" - CPU: %.1f%%", avgCpu);
+                                    }
+                                    if (avgMemory > 0) {
+                                        instanceInfo += String.format(", 메모리: %.1f%%", avgMemory);
                                     }
                                 }
                             }
@@ -324,13 +333,18 @@ public class ResourceAnalysisService {
                                 
                                 // CPU 및 메모리 사용률 계산
                                 double avgCpu = calculateAverageMetric(metricsResponse, "Percentage CPU");
-                                double avgMemory = calculateMemoryUtilization(metricsResponse, "Available Memory Bytes");
+                                // Percentage Memory 메트릭을 먼저 시도하고, 없으면 Available Memory Bytes 사용
+                                double avgMemory = calculateAverageMetric(metricsResponse, "Percentage Memory");
+                                if (avgMemory == 0.0) {
+                                    // Percentage Memory가 없으면 Available Memory Bytes를 사용하여 근사치 계산
+                                    avgMemory = calculateMemoryUtilization(metricsResponse, "Available Memory Bytes", vm.getVmSize());
+                                }
                                 
                                 if (avgCpu > 0) {
                                     vmInfo += String.format(" - CPU: %.1f%%", avgCpu);
                                 }
                                 if (avgMemory > 0) {
-                                    vmInfo += String.format(", 메모리 사용률: %.1f%%", avgMemory);
+                                    vmInfo += String.format(", 메모리: %.1f%%", avgMemory);
                                 }
                             }
                         } catch (Exception e) {
@@ -558,18 +572,51 @@ public class ResourceAnalysisService {
     /**
      * Azure 메트릭 응답에서 메모리 사용률 계산
      * Available Memory Bytes를 사용하여 메모리 사용률을 계산합니다.
-     * (VM 크기에 따라 총 메모리가 다르므로, 정확한 계산을 위해서는 VM 크기 정보가 필요하지만,
-     * 여기서는 간단히 Available Memory가 적을수록 사용률이 높다는 것을 나타냅니다)
+     * VM 크기 정보를 사용하여 총 메모리를 추정하고 사용률을 계산합니다.
      */
-    private double calculateMemoryUtilization(JsonNode metricsResponse, String metricName) {
-        // 메모리 사용률은 Available Memory Bytes만으로는 정확히 계산하기 어렵습니다.
-        // VM 크기에 따라 총 메모리가 다르기 때문입니다.
-        // 여기서는 간단히 메트릭이 있는지만 확인합니다.
+    private double calculateMemoryUtilization(JsonNode metricsResponse, String metricName, String vmSize) {
         double avgAvailableMemory = calculateAverageMetric(metricsResponse, metricName);
-        // Available Memory가 작을수록 메모리 사용률이 높다는 것을 나타내지만,
-        // 정확한 퍼센트 계산을 위해서는 VM 크기 정보가 필요합니다.
-        // 일단 메트릭이 있는 경우에만 표시하도록 합니다.
-        return avgAvailableMemory > 0 ? 0.0 : 0.0; // 정확한 계산을 위해서는 VM 크기 정보 필요
+        if (avgAvailableMemory == 0.0) {
+            return 0.0;
+        }
+        
+        // VM 크기별 총 메모리 (GB) 매핑 (주요 VM 크기만 포함)
+        Map<String, Double> vmSizeToMemoryGB = new HashMap<>();
+        vmSizeToMemoryGB.put("Standard_B1s", 1.0);
+        vmSizeToMemoryGB.put("Standard_B1ms", 2.0);
+        vmSizeToMemoryGB.put("Standard_B2s", 4.0);
+        vmSizeToMemoryGB.put("Standard_B2ms", 8.0);
+        vmSizeToMemoryGB.put("Standard_D1_v2", 3.5);
+        vmSizeToMemoryGB.put("Standard_D2_v2", 7.0);
+        vmSizeToMemoryGB.put("Standard_D3_v2", 14.0);
+        vmSizeToMemoryGB.put("Standard_D4_v2", 28.0);
+        vmSizeToMemoryGB.put("Standard_D2s_v3", 8.0);
+        vmSizeToMemoryGB.put("Standard_D4s_v3", 16.0);
+        vmSizeToMemoryGB.put("Standard_D8s_v3", 32.0);
+        vmSizeToMemoryGB.put("Standard_E2s_v3", 16.0);
+        vmSizeToMemoryGB.put("Standard_E4s_v3", 32.0);
+        vmSizeToMemoryGB.put("Standard_E8s_v3", 64.0);
+        vmSizeToMemoryGB.put("Standard_F2s_v2", 4.0);
+        vmSizeToMemoryGB.put("Standard_F4s_v2", 8.0);
+        vmSizeToMemoryGB.put("Standard_F8s_v2", 16.0);
+        
+        Double totalMemoryGB = vmSizeToMemoryGB.get(vmSize);
+        if (totalMemoryGB == null) {
+            // VM 크기가 매핑에 없으면 메트릭만 표시하지 않음
+            return 0.0;
+        }
+        
+        // Available Memory Bytes를 GB로 변환
+        double avgAvailableMemoryGB = avgAvailableMemory / (1024.0 * 1024.0 * 1024.0);
+        
+        // 사용된 메모리 = 총 메모리 - 사용 가능한 메모리
+        double usedMemoryGB = totalMemoryGB - avgAvailableMemoryGB;
+        
+        // 사용률 계산 (0-100%)
+        double utilizationPercent = (usedMemoryGB / totalMemoryGB) * 100.0;
+        
+        // 음수나 100% 초과 값 방지
+        return Math.max(0.0, Math.min(100.0, utilizationPercent));
     }
     
     /**

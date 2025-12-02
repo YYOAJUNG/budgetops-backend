@@ -174,8 +174,8 @@ public class AzureApiClient {
         String timespan = startTime.toString() + "/" + endTime.toString();
         params.put("timespan", timespan);
         
-        // 메트릭 이름: CPU 사용률, 메모리 사용률
-        params.put("metricnames", "Percentage CPU,Available Memory Bytes");
+        // 메트릭 이름: CPU 사용률, 메모리 사용률 (Percentage Memory는 일부 VM에서만 사용 가능)
+        params.put("metricnames", "Percentage CPU,Available Memory Bytes,Percentage Memory");
         
         // 집계 방식: Average
         params.put("aggregation", "Average");
