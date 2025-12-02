@@ -250,7 +250,7 @@ public class AzureApiClient {
                 + "/providers/Microsoft.Compute/virtualMachines/" + vmName + "/powerOff";
         Map<String, String> params = new HashMap<>();
         params.put("api-version", "2023-09-01");
-        post(url, accessToken, params, null);
+        postWithoutResponse(url, accessToken, params, null);
     }
 
     /**
@@ -262,7 +262,7 @@ public class AzureApiClient {
                 + "/providers/Microsoft.Compute/virtualMachines/" + vmName + "/start";
         Map<String, String> params = new HashMap<>();
         params.put("api-version", "2023-09-01");
-        post(url, accessToken, params, null);
+        postWithoutResponse(url, accessToken, params, null);
     }
 
     /**
@@ -274,7 +274,7 @@ public class AzureApiClient {
                 + "/providers/Microsoft.Compute/virtualMachines/" + vmName + "/deallocate";
         Map<String, String> params = new HashMap<>();
         params.put("api-version", "2023-09-01");
-        post(url, accessToken, params, null);
+        postWithoutResponse(url, accessToken, params, null);
     }
 
     /**
@@ -348,7 +348,37 @@ public class AzureApiClient {
                     new HttpEntity<>(body, headers),
                     String.class
             );
-            return objectMapper.readTree(response.getBody());
+            String responseBody = response.getBody();
+            if (responseBody == null || responseBody.isBlank()) {
+                // 응답 본문이 없는 경우 빈 JSON 객체 반환
+                return objectMapper.createObjectNode();
+            }
+            return objectMapper.readTree(responseBody);
+        } catch (HttpStatusCodeException e) {
+            log.error("Azure POST 호출 실패: url={}, status={}, body={}", requestUrl, e.getStatusCode(), e.getResponseBodyAsString());
+            throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+        } catch (Exception e) {
+            log.error("Azure POST 호출 중 알 수 없는 오류: url={}", requestUrl, e);
+            throw new IllegalStateException("Azure API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 응답 본문이 없는 POST 요청 (VM 중지/시작 등)
+     */
+    private void postWithoutResponse(String url, String accessToken, Map<String, String> params, Object body) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        String requestUrl = withQueryParams(url, params);
+        try {
+            restTemplate.exchange(
+                    requestUrl,
+                    HttpMethod.POST,
+                    new HttpEntity<>(body, headers),
+                    Void.class
+            );
         } catch (HttpStatusCodeException e) {
             log.error("Azure POST 호출 실패: url={}, status={}, body={}", requestUrl, e.getStatusCode(), e.getResponseBodyAsString());
             throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
