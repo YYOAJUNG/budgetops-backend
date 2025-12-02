@@ -16,6 +16,9 @@ import com.budgetops.backend.ncp.entity.NcpAccount;
 import com.budgetops.backend.ncp.repository.NcpAccountRepository;
 import com.budgetops.backend.ncp.service.NcpServerService;
 import com.budgetops.backend.ncp.dto.NcpServerInstanceResponse;
+import com.budgetops.backend.aws.dto.AwsEc2MetricsResponse;
+import com.budgetops.backend.ncp.dto.NcpServerMetricsResponse;
+import com.budgetops.backend.gcp.dto.GcpResourceMetricsResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -136,8 +139,10 @@ public class ResourceAnalysisService {
     
     /**
      * 리소스 분석 결과를 프롬프트용 텍스트로 변환합니다.
+     * @param analysis 리소스 분석 결과
+     * @param memberId 현재 사용자 ID (GCP 메트릭 조회에 필요)
      */
-    public String formatResourceAnalysisForPrompt(ResourceAnalysisResult analysis) {
+    public String formatResourceAnalysisForPrompt(ResourceAnalysisResult analysis, Long memberId) {
         StringBuilder sb = new StringBuilder();
         
         sb.append("=== 실제 클라우드 리소스 현황 및 최적화 기회 ===\n\n");
@@ -175,19 +180,59 @@ public class ResourceAnalysisService {
                     sb.append(String.join(", ", typeSummary)).append("\n");
                 }
                 
-                // 실행 중인 인스턴스 상세 (최적화 기회 식별)
+                // 실행 중인 인스턴스 상세 (메트릭 포함)
                 List<AwsEc2InstanceResponse> runningInstances = regions.values().stream()
                         .flatMap(List::stream)
                         .filter(i -> "running".equalsIgnoreCase(i.getState()))
                         .collect(Collectors.toList());
                 
                 if (!runningInstances.isEmpty()) {
-                    sb.append("  실행 중인 주요 인스턴스:\n");
+                    sb.append("  실행 중인 주요 인스턴스 (최근 7일 메트릭 포함):\n");
                     for (AwsEc2InstanceResponse instance : runningInstances.subList(0, Math.min(10, runningInstances.size()))) {
-                        sb.append(String.format("    • %s (%s) - %s\n", 
+                        String instanceInfo = String.format("    • %s (%s)", 
                                 instance.getName() != null ? instance.getName() : instance.getInstanceId(),
-                                instance.getInstanceType() != null ? instance.getInstanceType() : "unknown",
-                                instance.getState()));
+                                instance.getInstanceType() != null ? instance.getInstanceType() : "unknown");
+                        
+                        // 메트릭 조회 시도 (실패해도 계속 진행)
+                        try {
+                            // AWS 계정 찾기
+                            String region = regions.entrySet().stream()
+                                    .filter(e -> e.getValue().contains(instance))
+                                    .map(Map.Entry::getKey)
+                                    .findFirst()
+                                    .orElse(null);
+                            
+                            if (region != null) {
+                                List<AwsAccount> awsAccounts = awsAccountRepository.findByActiveTrue();
+                                AwsAccount account = awsAccounts.stream()
+                                        .filter(acc -> accountName.equals(acc.getName()))
+                                        .findFirst()
+                                        .orElse(null);
+                                
+                                if (account != null) {
+                                    // AWS EC2 메트릭 조회 (7일간 = 168시간)
+                                    AwsEc2MetricsResponse metrics = awsEc2Service.getInstanceMetrics(
+                                            account.getId(), 
+                                            instance.getInstanceId(), 
+                                            region, 
+                                            168);
+                                    
+                                    // CPU 사용률 평균 계산
+                                    double avgCpu = metrics.getCpuUtilization().stream()
+                                            .mapToDouble(m -> m.getValue() != null ? m.getValue() : 0.0)
+                                            .average()
+                                            .orElse(0.0);
+                                    
+                                    if (avgCpu > 0) {
+                                        instanceInfo += String.format(" - CPU: %.1f%%", avgCpu);
+                                    }
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.debug("Failed to fetch metrics for AWS EC2 instance {}: {}", instance.getInstanceId(), e.getMessage());
+                        }
+                        
+                        sb.append(instanceInfo).append("\n");
                     }
                     if (runningInstances.size() > 10) {
                         sb.append(String.format("    ... 외 %d개\n", runningInstances.size() - 10));
@@ -226,7 +271,7 @@ public class ResourceAnalysisService {
                     sb.append(String.join(", ", sizeSummary)).append("\n");
                 }
                 
-                // 실행 중인 VM 상세
+                // 실행 중인 VM 상세 (메트릭 포함)
                 List<AzureVirtualMachineResponse> runningVms = vms.stream()
                         .filter(vm -> "running".equalsIgnoreCase(vm.getPowerState()))
                         .collect(Collectors.toList());
@@ -269,6 +314,56 @@ public class ResourceAnalysisService {
                             .collect(Collectors.toList());
                     sb.append(String.join(", ", typeSummary)).append("\n");
                 }
+                
+                // Compute Engine 인스턴스만 필터링하여 메트릭 조회
+                List<GcpResourceResponse> computeInstances = resources.stream()
+                        .filter(r -> "compute.googleapis.com/Instance".equals(r.getResourceType()))
+                        .filter(r -> "RUNNING".equalsIgnoreCase(r.getStatus()) || "running".equalsIgnoreCase(r.getStatus()))
+                        .collect(Collectors.toList());
+                
+                if (!computeInstances.isEmpty()) {
+                    sb.append("  실행 중인 Compute Engine 인스턴스 (최근 7일 메트릭 포함):\n");
+                    for (GcpResourceResponse resource : computeInstances.subList(0, Math.min(10, computeInstances.size()))) {
+                        String resourceInfo = String.format("    • %s (%s)", 
+                                resource.getResourceName() != null ? resource.getResourceName() : resource.getResourceId(),
+                                resource.getResourceTypeShort() != null ? resource.getResourceTypeShort() : "unknown");
+                        
+                        // 메트릭 조회 시도 (실패해도 계속 진행)
+                        try {
+                            // GCP 리소스 메트릭 조회 (7일간 = 168시간)
+                            GcpResourceMetricsResponse metrics = gcpResourceService.getResourceMetrics(
+                                    resource.getResourceId(),
+                                    memberId,
+                                    168);
+                            
+                            // CPU 사용률 평균 계산
+                            double avgCpu = metrics.getCpuUtilization().stream()
+                                    .mapToDouble(m -> m.getValue() != null ? m.getValue() : 0.0)
+                                    .average()
+                                    .orElse(0.0);
+                            
+                            // 메모리 사용률 평균 계산 (Monitoring Agent가 설치된 경우에만 사용 가능)
+                            double avgMemory = metrics.getMemoryUtilization().stream()
+                                    .mapToDouble(m -> m.getValue() != null ? m.getValue() : 0.0)
+                                    .average()
+                                    .orElse(0.0);
+                            
+                            if (avgCpu > 0) {
+                                resourceInfo += String.format(" - CPU: %.1f%%", avgCpu);
+                            }
+                            if (avgMemory > 0) {
+                                resourceInfo += String.format(", 메모리: %.1f%%", avgMemory);
+                            }
+                        } catch (Exception e) {
+                            log.debug("Failed to fetch metrics for GCP resource {}: {}", resource.getResourceId(), e.getMessage());
+                        }
+                        
+                        sb.append(resourceInfo).append("\n");
+                    }
+                    if (computeInstances.size() > 10) {
+                        sb.append(String.format("    ... 외 %d개\n", computeInstances.size() - 10));
+                    }
+                }
                 sb.append("\n");
             }
         }
@@ -296,13 +391,56 @@ public class ResourceAnalysisService {
                         .collect(Collectors.toList());
                 
                 if (!runningServers.isEmpty()) {
-                    sb.append("  실행 중인 주요 서버:\n");
+                    sb.append("  실행 중인 주요 서버 (최근 7일 메트릭 포함):\n");
+                    
+                    // NCP 계정 찾기
+                    NcpAccount ncpAccount = null;
+                    try {
+                        List<NcpAccount> accounts = ncpAccountRepository.findByActiveTrue();
+                        ncpAccount = accounts.stream()
+                                .filter(acc -> accountName.equals(acc.getName()))
+                                .findFirst()
+                                .orElse(null);
+                    } catch (Exception e) {
+                        log.debug("Failed to find NCP account for metrics: {}", e.getMessage());
+                    }
+                    
                     for (NcpServerInstanceResponse server : runningServers.subList(0, Math.min(10, runningServers.size()))) {
-                        sb.append(String.format("    • %s (%d vCPU, %dGB RAM) - %s\n", 
+                        String serverInfo = String.format("    • %s (%d vCPU, %dGB RAM)", 
                                 server.getServerName() != null ? server.getServerName() : server.getServerInstanceNo(),
                                 server.getCpuCount() != null ? server.getCpuCount() : 0,
-                                server.getMemorySize() != null ? server.getMemorySize() : 0,
-                                server.getServerInstanceStatus()));
+                                server.getMemorySize() != null ? server.getMemorySize() : 0);
+                        
+                        // 메트릭 조회 시도 (실패해도 계속 진행)
+                        try {
+                            if (ncpAccount != null) {
+                                String regionCode = regions.keySet().stream().findFirst().orElse(null);
+                                if (regionCode == null) {
+                                    regionCode = ncpAccount.getRegionCode();
+                                }
+                                
+                                // NCP 서버 메트릭 조회 (7일간 = 168시간)
+                                NcpServerMetricsResponse metrics = ncpServerService.getInstanceMetrics(
+                                        ncpAccount.getId(),
+                                        server.getServerInstanceNo(),
+                                        regionCode,
+                                        168);
+                                
+                                // CPU 사용률 평균 계산
+                                double avgCpu = metrics.getCpuUtilization().stream()
+                                        .mapToDouble(m -> m.getValue() != null ? m.getValue() : 0.0)
+                                        .average()
+                                        .orElse(0.0);
+                                
+                                if (avgCpu > 0) {
+                                    serverInfo += String.format(" - CPU: %.1f%%", avgCpu);
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.debug("Failed to fetch metrics for NCP server {}: {}", server.getServerInstanceNo(), e.getMessage());
+                        }
+                        
+                        sb.append(serverInfo).append("\n");
                     }
                     if (runningServers.size() > 10) {
                         sb.append(String.format("    ... 외 %d개\n", runningServers.size() - 10));

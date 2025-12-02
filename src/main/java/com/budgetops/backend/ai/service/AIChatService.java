@@ -144,7 +144,7 @@ public class AIChatService {
         try {
             ResourceAnalysisService.ResourceAnalysisResult resourceAnalysis = 
                     resourceAnalysisService.analyzeAllResources(currentMemberId);
-            String resourceAnalysisText = resourceAnalysisService.formatResourceAnalysisForPrompt(resourceAnalysis);
+            String resourceAnalysisText = resourceAnalysisService.formatResourceAnalysisForPrompt(resourceAnalysis, currentMemberId);
             prompt.append(resourceAnalysisText);
         } catch (Exception e) {
             log.warn("Failed to perform resource analysis: {}", e.getMessage());
