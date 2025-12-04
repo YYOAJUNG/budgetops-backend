@@ -267,6 +267,12 @@ public class NcpServerService {
                     "Percent"
             );
 
+            // Memory Utilization
+            List<NcpServerMetricsResponse.MetricDataPoint> memoryMetrics = convertToMetricDataPoints(
+                    metricService.queryMetricData(account, instanceNo, "mem_usert", durationMinutes),
+                    "Percent"
+            );
+
             // Network In
             List<NcpServerMetricsResponse.MetricDataPoint> networkInMetrics = convertToMetricDataPoints(
                     metricService.queryMetricData(account, instanceNo, "avg_rcv_bps", durationMinutes),
@@ -302,6 +308,7 @@ public class NcpServerService {
                     .instanceName(instanceName)
                     .region(region)
                     .cpuUtilization(cpuMetrics)
+                    .memoryUtilization(memoryMetrics)
                     .networkIn(networkInMetrics)
                     .networkOut(networkOutMetrics)
                     .diskRead(diskReadMetrics)
