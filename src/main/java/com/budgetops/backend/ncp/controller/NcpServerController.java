@@ -55,6 +55,19 @@ public class NcpServerController {
     }
 
     /**
+     * 서버 인스턴스 반납 (완전 삭제)
+     */
+    @PostMapping("/{accountId}/servers/instances/terminate")
+    public ResponseEntity<List<NcpServerInstanceResponse>> terminateInstances(
+            @PathVariable Long accountId,
+            @RequestBody List<String> serverInstanceNos,
+            @RequestParam(value = "regionCode", required = false) String regionCode
+    ) {
+        List<NcpServerInstanceResponse> instances = serverService.terminateInstances(accountId, serverInstanceNos, regionCode);
+        return ResponseEntity.ok(instances);
+    }
+
+    /**
      * 서버 인스턴스 메트릭 조회
      */
     @GetMapping("/{accountId}/servers/instances/{instanceNo}/metrics")
