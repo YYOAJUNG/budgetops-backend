@@ -5,6 +5,7 @@ import com.budgetops.backend.azure.dto.AzureAccountResponse;
 import com.budgetops.backend.azure.entity.AzureAccount;
 import com.budgetops.backend.azure.service.AzureAccountService;
 import com.budgetops.backend.azure.service.AzureCostService;
+import com.budgetops.backend.azure.service.AzureFreeTierService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -22,6 +23,7 @@ public class AzureAccountController {
 
     private final AzureAccountService accountService;
     private final AzureCostService costService;
+    private final AzureFreeTierService freeTierService;
 
     @PostMapping
     public ResponseEntity<?> register(@Valid @RequestBody AzureAccountCreateRequest request) {
@@ -105,6 +107,34 @@ public class AzureAccountController {
                 endDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
         );
         return ResponseEntity.ok(costs);
+    }
+
+    /**
+     * 특정 Azure 계정의 VM 프리티어 사용량 조회 (근사치)
+     * GET /api/azure/accounts/{accountId}/freetier/usage
+     */
+    @GetMapping("/{accountId}/freetier/usage")
+    public ResponseEntity<AzureFreeTierService.FreeTierUsage> getFreeTierUsage(
+            @PathVariable Long accountId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        // 기본값: 현재 달 기준 (1일 ~ 오늘)
+        LocalDate now = LocalDate.now();
+        if (startDate == null) {
+            startDate = now.withDayOfMonth(1);
+        }
+        if (endDate == null) {
+            endDate = now;
+        }
+
+        AzureFreeTierService.FreeTierUsage usage = freeTierService.getVmFreeTierUsage(
+                accountId,
+                getCurrentMemberId(),
+                startDate,
+                endDate
+        );
+        return ResponseEntity.ok(usage);
     }
 
     private AzureAccountResponse toResponse(AzureAccount account) {
