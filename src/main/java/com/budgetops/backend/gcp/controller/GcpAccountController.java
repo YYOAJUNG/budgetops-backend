@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -18,17 +20,21 @@ import com.budgetops.backend.gcp.dto.SaveIntegrationResponse;
 import com.budgetops.backend.gcp.dto.TestIntegrationRequest;
 import com.budgetops.backend.gcp.dto.TestIntegrationResponse;
 import com.budgetops.backend.gcp.service.GcpAccountService;
+import com.budgetops.backend.gcp.service.GcpFreeTierService;
 
 import java.util.List;
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/gcp/accounts")
 public class GcpAccountController {
 
     private final GcpAccountService accountService;
+    private final GcpFreeTierService freeTierService;
 
-    public GcpAccountController(GcpAccountService accountService) {
+    public GcpAccountController(GcpAccountService accountService, GcpFreeTierService freeTierService) {
         this.accountService = accountService;
+        this.freeTierService = freeTierService;
     }
 
     @GetMapping
@@ -60,6 +66,36 @@ public class GcpAccountController {
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
         }
+    }
+
+    /**
+     * 특정 GCP 계정의 프리티어/크레딧 사용량 조회
+     * GET /api/gcp/accounts/{accountId}/freetier/usage
+     */
+    @GetMapping("/{accountId}/freetier/usage")
+    public ResponseEntity<GcpFreeTierService.FreeTierUsage> getFreeTierUsage(
+            @PathVariable Long accountId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        LocalDate now = LocalDate.now();
+        if (startDate == null) {
+            startDate = now.minusDays(30);
+        }
+        if (endDate == null) {
+            endDate = now.plusDays(1);
+        }
+
+        String start = startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
+        String end = endDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
+
+        GcpFreeTierService.FreeTierUsage usage = freeTierService.getFreeTierUsage(
+                accountId,
+                getCurrentMemberId(),
+                start,
+                end
+        );
+        return ResponseEntity.ok(usage);
     }
 
     private Long getCurrentMemberId() {
