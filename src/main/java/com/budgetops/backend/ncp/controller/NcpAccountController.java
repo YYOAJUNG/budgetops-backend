@@ -8,6 +8,7 @@ import com.budgetops.backend.ncp.dto.NcpMonthlyCost;
 import com.budgetops.backend.ncp.entity.NcpAccount;
 import com.budgetops.backend.ncp.service.NcpAccountService;
 import com.budgetops.backend.ncp.service.NcpCostService;
+import com.budgetops.backend.ncp.service.NcpFreeTierService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,7 @@ import java.util.List;
 public class NcpAccountController {
     private final NcpAccountService service;
     private final NcpCostService costService;
+    private final NcpFreeTierService freeTierService;
 
     /**
      * NCP 계정 등록 (자격증명 검증 후 저장)
@@ -114,6 +116,22 @@ public class NcpAccountController {
 
         List<NcpDailyUsage> usageList = costService.getDailyUsage(accountId, getCurrentMemberId(), start, end);
         return ResponseEntity.ok(usageList);
+    }
+
+    /**
+     * 특정 계정의 프리티어/할인액 사용량 조회
+     */
+    @GetMapping("/{accountId}/freetier/usage")
+    public ResponseEntity<NcpFreeTierService.FreeTierUsage> getAccountFreeTierUsage(
+            @PathVariable Long accountId,
+            @RequestParam(required = false) String month
+    ) {
+        NcpFreeTierService.FreeTierUsage usage = freeTierService.getFreeTierUsage(
+                accountId,
+                getCurrentMemberId(),
+                month
+        );
+        return ResponseEntity.ok(usage);
     }
 
     /**
