@@ -19,10 +19,11 @@ import java.util.List;
  * Azure 프리티어 사용량 계산 서비스
  *
  * 참고:
- * - 현재는 VM 사이즈가 Standard_B1s 인 인스턴스만 프리티어 대상으로 간주합니다.
- * - 실제 실행 시간 히스토리를 모두 추적하지는 않고,
- *   조회 기간 동안 "프리티어 대상 VM 수 × 기간(시간)" 으로 근사 계산합니다.
- *   (대부분 24시간 상시 실행되는 개발/테스트 용도라는 가정)
+ * - 실제 Azure 포털의 크레딧/프리티어 잔액과 1:1로 일치하지 않습니다.
+ * - VM 실행 시간을 모두 추적하는 대신,
+ *   조회 기간 동안 "모든 VM 수 × 기간(시간)" 을 기반으로
+ *   일반적인 B1s 프리티어 한도(월 750시간)를 스케일링하여 근사 계산합니다.
+ *   (24시간 상시 실행된다고 가정한 대략적인 사용률 지표 용도)
  */
 @Slf4j
 @Service
@@ -67,11 +68,9 @@ public class AzureFreeTierService {
         List<com.budgetops.backend.azure.dto.AzureVirtualMachineResponse> vms =
                 computeService.listVirtualMachines(accountId, null);
 
-        long freeTierVmCount = vms.stream()
-                .filter(vm -> AzureFreeTierLimits.isFreeTierVmSize(vm.getVmSize()))
-                .count();
+        int vmCount = vms.size();
 
-        if (freeTierVmCount == 0) {
+        if (vmCount == 0) {
             return FreeTierUsage.builder()
                     .totalUsageHours(0.0)
                     .freeTierLimitHours(AzureFreeTierLimits.VM_FREE_TIER_HOURS_PER_MONTH)
@@ -81,8 +80,10 @@ public class AzureFreeTierService {
                     .build();
         }
 
-        double totalUsageHours = freeTierVmCount * hoursInPeriod;
-        double freeTierLimit = AzureFreeTierLimits.VM_FREE_TIER_HOURS_PER_MONTH;
+        // 모든 VM을 프리티어/크레딧을 소모하는 대상으로 보고,
+        // VM 수에 비례하여 프리티어 한도를 확장 (VM 당 750시간 기준)
+        double totalUsageHours = vmCount * hoursInPeriod;
+        double freeTierLimit = AzureFreeTierLimits.VM_FREE_TIER_HOURS_PER_MONTH * vmCount;
         double remaining = Math.max(0.0, freeTierLimit - totalUsageHours);
         double percentage = freeTierLimit > 0
                 ? Math.min(100.0, (totalUsageHours / freeTierLimit) * 100.0)
@@ -93,7 +94,7 @@ public class AzureFreeTierService {
                 .freeTierLimitHours(freeTierLimit)
                 .remainingHours(remaining)
                 .percentage(percentage)
-                .eligibleVmCount((int) freeTierVmCount)
+                .eligibleVmCount(vmCount)
                 .build();
     }
 
