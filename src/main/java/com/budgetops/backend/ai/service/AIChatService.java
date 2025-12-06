@@ -24,15 +24,18 @@ public class AIChatService {
     private final GeminiConfig geminiConfig;
     private final CostOptimizationRuleLoader ruleLoader;
     private final MCPContextBuilder mcpContextBuilder;
+    private final com.budgetops.backend.billing.service.BillingService billingService;
     private final Map<String, List<Map<String, String>>> chatSessions = new HashMap<>();
     private final WebClient webClient;
-    
+
     public AIChatService(GeminiConfig geminiConfig,
                          CostOptimizationRuleLoader ruleLoader,
-                         MCPContextBuilder mcpContextBuilder) {
+                         MCPContextBuilder mcpContextBuilder,
+                         com.budgetops.backend.billing.service.BillingService billingService) {
         this.geminiConfig = geminiConfig;
         this.ruleLoader = ruleLoader;
         this.mcpContextBuilder = mcpContextBuilder;
+        this.billingService = billingService;
         this.webClient = WebClient.builder()
                 .baseUrl("https://generativelanguage.googleapis.com/v1beta")
                 .build();
@@ -68,24 +71,45 @@ public class AIChatService {
         
         try {
             // Gemini API 호출
-            String response = callGeminiAPI(systemPrompt, history);
-            
+            GeminiApiResponse geminiResponse = callGeminiAPI(systemPrompt, history);
+            String response = geminiResponse.getText();
+
             // AI 응답 추가
             Map<String, String> aiMessage = new HashMap<>();
             aiMessage.put("role", "model");
             aiMessage.put("parts", response);
             history.add(aiMessage);
-            
+
             // 히스토리 크기 제한 (최근 20개 메시지만 유지)
             if (history.size() > 20) {
                 history.subList(0, history.size() - 20).clear();
             }
-            
+
+            // 토큰 차감
+            Long memberId = getCurrentMemberId();
+            Integer remainingTokens = null;
+            if (memberId != null && geminiResponse.getTotalTokens() != null) {
+                try {
+                    remainingTokens = billingService.consumeTokens(memberId, geminiResponse.getTotalTokens());
+                    log.info("토큰 차감 완료: memberId={}, used={}, remaining={}",
+                            memberId, geminiResponse.getTotalTokens(), remainingTokens);
+                } catch (IllegalStateException e) {
+                    log.error("토큰 차감 실패: {}", e.getMessage());
+                    throw new RuntimeException("토큰이 부족합니다. 토큰을 구매해주세요.");
+                }
+            }
+
             return ChatResponse.builder()
                     .response(response)
                     .sessionId(sessionId)
+                    .tokenUsage(ChatResponse.TokenUsage.builder()
+                            .promptTokens(geminiResponse.getPromptTokens())
+                            .completionTokens(geminiResponse.getCompletionTokens())
+                            .totalTokens(geminiResponse.getTotalTokens())
+                            .build())
+                    .remainingTokens(remainingTokens)
                     .build();
-                    
+
         } catch (Exception e) {
             log.error("Failed to get response from Gemini API", e);
             throw new RuntimeException("AI 응답 생성 중 오류가 발생했습니다: " + e.getMessage(), e);
@@ -163,7 +187,7 @@ public class AIChatService {
         return null;
     }
     
-    private String callGeminiAPI(String systemPrompt, List<Map<String, String>> history) {
+    private GeminiApiResponse callGeminiAPI(String systemPrompt, List<Map<String, String>> history) {
         try {
             Map<String, Object> requestBody = new HashMap<>();
             
@@ -266,16 +290,71 @@ public class AIChatService {
             
             @SuppressWarnings("unchecked")
             List<Map<String, String>> parts = (List<Map<String, String>>) content.get("parts");
-            
+
             if (parts == null || parts.isEmpty()) {
                 throw new RuntimeException("Gemini API 응답에 parts가 없습니다.");
             }
-            
-            return parts.get(0).get("text");
-            
+
+            String text = parts.get(0).get("text");
+
+            // usageMetadata 파싱
+            Integer promptTokens = null;
+            Integer completionTokens = null;
+            Integer totalTokens = null;
+
+            if (response.containsKey("usageMetadata")) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> usageMetadata = (Map<String, Object>) response.get("usageMetadata");
+
+                promptTokens = usageMetadata.get("promptTokenCount") != null
+                        ? ((Number) usageMetadata.get("promptTokenCount")).intValue() : null;
+                completionTokens = usageMetadata.get("candidatesTokenCount") != null
+                        ? ((Number) usageMetadata.get("candidatesTokenCount")).intValue() : null;
+                totalTokens = usageMetadata.get("totalTokenCount") != null
+                        ? ((Number) usageMetadata.get("totalTokenCount")).intValue() : null;
+
+                log.debug("Token usage - prompt: {}, completion: {}, total: {}",
+                        promptTokens, completionTokens, totalTokens);
+            }
+
+            return new GeminiApiResponse(text, promptTokens, completionTokens, totalTokens);
+
         } catch (Exception e) {
             log.error("Gemini API 호출 실패", e);
             throw new RuntimeException("Gemini API 호출 중 오류: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Gemini API 응답 래퍼 클래스
+     */
+    private static class GeminiApiResponse {
+        private final String text;
+        private final Integer promptTokens;
+        private final Integer completionTokens;
+        private final Integer totalTokens;
+
+        public GeminiApiResponse(String text, Integer promptTokens, Integer completionTokens, Integer totalTokens) {
+            this.text = text;
+            this.promptTokens = promptTokens;
+            this.completionTokens = completionTokens;
+            this.totalTokens = totalTokens;
+        }
+
+        public String getText() {
+            return text;
+        }
+
+        public Integer getPromptTokens() {
+            return promptTokens;
+        }
+
+        public Integer getCompletionTokens() {
+            return completionTokens;
+        }
+
+        public Integer getTotalTokens() {
+            return totalTokens;
         }
     }
 }
