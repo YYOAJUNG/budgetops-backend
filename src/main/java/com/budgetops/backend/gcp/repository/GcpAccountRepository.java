@@ -11,6 +11,7 @@ public interface GcpAccountRepository extends JpaRepository<GcpAccount, Long> {
     List<GcpAccount> findByBillingAccountId(String billingAccountId);
     List<GcpAccount> findByOwnerId(Long ownerId);
     Optional<GcpAccount> findByIdAndOwnerId(Long id, Long ownerId);
+    long countByOwnerId(Long ownerId);
 }
 
 
