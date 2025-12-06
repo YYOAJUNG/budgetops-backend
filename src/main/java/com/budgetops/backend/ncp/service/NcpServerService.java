@@ -128,6 +128,32 @@ public class NcpServerService {
     }
 
     /**
+     * 서버 인스턴스 반납 (완전 삭제)
+     */
+    public List<NcpServerInstanceResponse> terminateInstances(Long accountId, List<String> serverInstanceNos, String regionCode) {
+        NcpAccount account = getActiveAccount(accountId);
+
+        log.info("Terminating NCP server instances {} for account {}", serverInstanceNos, accountId);
+
+        try {
+            Map<String, String> params = buildServerActionParams(serverInstanceNos, regionCode, account);
+
+            JsonNode response = apiClient.callServerApi(
+                    "/vserver/v2/terminateServerInstances",
+                    params,
+                    account.getAccessKey(),
+                    account.getSecretKeyEnc()
+            );
+
+            return parseServerInstanceList(response);
+
+        } catch (Exception e) {
+            log.error("Failed to terminate server instances for account {}: {}", accountId, e.getMessage(), e);
+            throw new RuntimeException("서버 반납 실패: " + e.getMessage());
+        }
+    }
+
+    /**
      * 활성화된 계정 조회
      */
     private NcpAccount getActiveAccount(Long accountId) {
@@ -194,6 +220,7 @@ public class NcpServerService {
                 .memorySize(server.path("memorySize").asLong(0L))
                 .platformType(server.path("platformType").path("codeName").asText(null))
                 .publicIp(server.path("publicIp").asText(null))
+                .privateIp(server.path("privateIp").asText(null))
                 .serverInstanceStatus(server.path("serverInstanceStatus").path("code").asText(null))
                 .serverInstanceStatusName(server.path("serverInstanceStatusName").asText(null))
                 .createDate(server.path("createDate").asText(null))
@@ -240,6 +267,12 @@ public class NcpServerService {
                     "Percent"
             );
 
+            // Memory Utilization
+            List<NcpServerMetricsResponse.MetricDataPoint> memoryMetrics = convertToMetricDataPoints(
+                    metricService.queryMetricData(account, instanceNo, "mem_usert", durationMinutes),
+                    "Percent"
+            );
+
             // Network In
             List<NcpServerMetricsResponse.MetricDataPoint> networkInMetrics = convertToMetricDataPoints(
                     metricService.queryMetricData(account, instanceNo, "avg_rcv_bps", durationMinutes),
@@ -275,6 +308,7 @@ public class NcpServerService {
                     .instanceName(instanceName)
                     .region(region)
                     .cpuUtilization(cpuMetrics)
+                    .memoryUtilization(memoryMetrics)
                     .networkIn(networkInMetrics)
                     .networkOut(networkOutMetrics)
                     .diskRead(diskReadMetrics)

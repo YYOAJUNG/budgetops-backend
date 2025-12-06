@@ -14,6 +14,7 @@ public class NcpServerMetricsResponse {
     String instanceName;
     String region;
     List<MetricDataPoint> cpuUtilization;
+    List<MetricDataPoint> memoryUtilization;
     List<MetricDataPoint> networkIn;
     List<MetricDataPoint> networkOut;
     List<MetricDataPoint> diskRead;
