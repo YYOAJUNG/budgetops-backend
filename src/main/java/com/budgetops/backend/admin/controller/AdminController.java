@@ -29,12 +29,14 @@ public class AdminController {
      */
     @GetMapping("/users")
     public ResponseEntity<Page<UserListResponse>> getUserList(
-            @PageableDefault(size = 20) Pageable pageable
+            @PageableDefault(size = 20) Pageable pageable,
+            @RequestParam(required = false) String search
     ) {
         Long adminId = getCurrentMemberId();
-        log.info("관리자 사용자 목록 조회: adminId={}, page={}, size={}", adminId, pageable.getPageNumber(), pageable.getPageSize());
+        log.info("관리자 사용자 목록 조회: adminId={}, page={}, size={}, search={}", 
+                adminId, pageable.getPageNumber(), pageable.getPageSize(), search);
         
-        Page<UserListResponse> users = adminService.getUserList(pageable);
+        Page<UserListResponse> users = adminService.getUserList(pageable, search);
         return ResponseEntity.ok(users);
     }
 
@@ -42,11 +44,13 @@ public class AdminController {
      * 전체 사용자의 결제 내역 조회
      */
     @GetMapping("/payments")
-    public ResponseEntity<List<AdminPaymentHistoryResponse>> getAllPaymentHistory() {
+    public ResponseEntity<List<AdminPaymentHistoryResponse>> getAllPaymentHistory(
+            @RequestParam(required = false) String search
+    ) {
         Long adminId = getCurrentMemberId();
-        log.info("관리자 결제 내역 조회: adminId={}", adminId);
+        log.info("관리자 결제 내역 조회: adminId={}, search={}", adminId, search);
         
-        List<AdminPaymentHistoryResponse> paymentHistory = adminService.getAllPaymentHistory();
+        List<AdminPaymentHistoryResponse> paymentHistory = adminService.getAllPaymentHistory(search);
         return ResponseEntity.ok(paymentHistory);
     }
 

@@ -39,10 +39,21 @@ public class AdminService {
 
     /**
      * 사용자 목록 조회 (페이지네이션) - 모든 상세 정보 포함
+     * @param search 검색어 (이름 또는 이메일, 선택사항)
      */
     @Transactional(readOnly = true)
-    public Page<UserListResponse> getUserList(Pageable pageable) {
-        Page<Member> members = memberRepository.findAll(pageable);
+    public Page<UserListResponse> getUserList(Pageable pageable, String search) {
+        Page<Member> members;
+        
+        if (search != null && !search.trim().isEmpty()) {
+            // 검색어가 있으면 검색 쿼리 사용
+            String searchTerm = search.trim();
+            members = memberRepository.findByNameContainingIgnoreCaseOrEmailContainingIgnoreCase(
+                    searchTerm, searchTerm, pageable);
+        } else {
+            // 검색어가 없으면 전체 조회
+            members = memberRepository.findAll(pageable);
+        }
         
         return members.map(member -> {
             Billing billing = billingRepository.findByMember(member)
@@ -74,10 +85,19 @@ public class AdminService {
 
     /**
      * 전체 사용자의 결제 내역 조회
+     * @param search 검색어 (사용자 이름 또는 이메일, 선택사항)
      */
     @Transactional(readOnly = true)
-    public List<AdminPaymentHistoryResponse> getAllPaymentHistory() {
-        List<Payment> payments = paymentRepository.findAll();
+    public List<AdminPaymentHistoryResponse> getAllPaymentHistory(String search) {
+        List<Payment> payments;
+        
+        if (search != null && !search.trim().isEmpty()) {
+            // 검색어가 있으면 검색 쿼리 사용
+            payments = paymentRepository.findByMemberNameOrEmailContaining(search.trim());
+        } else {
+            // 검색어가 없으면 전체 조회
+            payments = paymentRepository.findAll();
+        }
         
         return payments.stream()
                 .map(payment -> {
