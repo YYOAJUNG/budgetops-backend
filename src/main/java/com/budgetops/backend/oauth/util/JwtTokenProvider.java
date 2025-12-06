@@ -1,13 +1,12 @@
 package com.budgetops.backend.oauth.util;
 
+import com.budgetops.backend.config.AdminAuthUtil;
 import com.budgetops.backend.domain.user.entity.Member;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -20,12 +19,15 @@ public class JwtTokenProvider {
 
     private final SecretKey key;
     private final long tokenValidityInMilliseconds;
+    private final AdminAuthUtil adminAuthUtil;
 
     public JwtTokenProvider(
             @Value("${jwt.secret}") String secret,
-            @Value("${jwt.token-validity-in-seconds:86400}") long tokenValidityInSeconds) {
+            @Value("${jwt.token-validity-in-seconds:86400}") long tokenValidityInSeconds,
+            AdminAuthUtil adminAuthUtil) {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.tokenValidityInMilliseconds = tokenValidityInSeconds * 1000;
+        this.adminAuthUtil = adminAuthUtil;
     }
 
     /**
@@ -35,11 +37,15 @@ public class JwtTokenProvider {
         Date now = new Date();
         Date validity = new Date(now.getTime() + tokenValidityInMilliseconds);
 
+        // 관리자 여부 확인
+        String role = adminAuthUtil.isAdmin(member.getEmail()) ? "ADMIN" : "USER";
+
         return Jwts.builder()
                 .subject(member.getId().toString())  // memberId를 subject로
                 .claim("memberId", member.getId())
                 .claim("email", member.getEmail())
                 .claim("name", member.getName())
+                .claim("role", role)
                 .issuedAt(now)
                 .expiration(validity)
                 .signWith(key)
@@ -60,6 +66,14 @@ public class JwtTokenProvider {
     public String getEmailFromToken(String token) {
         Claims claims = getClaims(token);
         return claims.get("email", String.class);
+    }
+
+    /**
+     * JWT 토큰에서 role 추출
+     */
+    public String getRoleFromToken(String token) {
+        Claims claims = getClaims(token);
+        return claims.get("role", String.class);
     }
 
     /**
