@@ -14,4 +14,5 @@ public class UserInfo {
     private String email;
     private String name;
     private String picture;
+    private String role; // "ADMIN" 또는 "USER"
 }

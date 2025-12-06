@@ -11,4 +11,5 @@ public interface AwsAccountRepository extends JpaRepository<AwsAccount, Long> {
     List<AwsAccount> findByActiveTrue();
     List<AwsAccount> findByOwnerIdAndActiveTrue(Long ownerId);
     Optional<AwsAccount> findByIdAndOwnerId(Long id, Long ownerId);
+    long countByOwnerId(Long ownerId);
 }

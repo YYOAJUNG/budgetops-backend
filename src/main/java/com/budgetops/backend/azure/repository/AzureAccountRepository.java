@@ -11,5 +11,6 @@ public interface AzureAccountRepository extends JpaRepository<AzureAccount, Long
     List<AzureAccount> findByActiveTrue();
     List<AzureAccount> findByOwnerIdAndActiveTrue(Long ownerId);
     Optional<AzureAccount> findByIdAndOwnerId(Long id, Long ownerId);
+    long countByOwnerId(Long ownerId);
 }
 
