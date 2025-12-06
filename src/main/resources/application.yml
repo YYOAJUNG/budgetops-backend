@@ -41,7 +41,7 @@ app:
     redirect-uri: ${FRONTEND_URL}/oauth/callback
   # 관리자 이메일 리스트 (쉼표로 구분)
   admin:
-    emails: ${ADMIN_EMAILS:}
+    emails: ${ADMIN_EMAILS:mmmm27@ajou.ac.kr}
 
 iamport:
   api:
