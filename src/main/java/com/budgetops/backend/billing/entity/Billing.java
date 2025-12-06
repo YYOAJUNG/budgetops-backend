@@ -66,6 +66,23 @@ public class Billing {
     }
 
     /**
+     * 토큰 차감
+     */
+    public void consumeTokens(int tokens) {
+        if (this.currentTokens < tokens) {
+            throw new IllegalStateException("토큰이 부족합니다. 현재: " + this.currentTokens + ", 필요: " + tokens);
+        }
+        this.currentTokens -= tokens;
+    }
+
+    /**
+     * 토큰 보유 여부 확인
+     */
+    public boolean hasEnoughTokens(int required) {
+        return this.currentTokens >= required;
+    }
+
+    /**
      * 무료 요금제인지 확인
      */
     public boolean isFreePlan() {

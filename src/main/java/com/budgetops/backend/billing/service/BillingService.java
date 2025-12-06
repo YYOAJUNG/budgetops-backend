@@ -145,4 +145,46 @@ public class BillingService {
             log.info("빌링 정보 삭제: memberId={}", member.getId());
         });
     }
+
+    /**
+     * 토큰 차감 (AI 사용 시)
+     */
+    public int consumeTokens(Long memberId, int tokens) {
+        Billing billing = billingRepository.findByMemberId(memberId)
+                .orElseThrow(() -> new BillingNotFoundException(memberId));
+
+        if (!billing.hasEnoughTokens(tokens)) {
+            log.warn("토큰 부족: memberId={}, required={}, current={}",
+                    memberId, tokens, billing.getCurrentTokens());
+            throw new IllegalStateException("토큰이 부족합니다. 현재: " + billing.getCurrentTokens() + ", 필요: " + tokens);
+        }
+
+        billing.consumeTokens(tokens);
+        billingRepository.save(billing);
+
+        log.info("토큰 차감: memberId={}, consumed={}, remaining={}",
+                memberId, tokens, billing.getCurrentTokens());
+
+        return billing.getCurrentTokens();
+    }
+
+    /**
+     * 토큰 보유 여부 확인
+     */
+    @Transactional(readOnly = true)
+    public boolean hasEnoughTokens(Long memberId, int required) {
+        return billingRepository.findByMemberId(memberId)
+                .map(billing -> billing.hasEnoughTokens(required))
+                .orElse(false);
+    }
+
+    /**
+     * 현재 토큰 잔액 조회
+     */
+    @Transactional(readOnly = true)
+    public int getCurrentTokens(Long memberId) {
+        return billingRepository.findByMemberId(memberId)
+                .map(Billing::getCurrentTokens)
+                .orElse(0);
+    }
 }
