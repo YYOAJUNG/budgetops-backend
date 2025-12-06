@@ -85,14 +85,17 @@ public class AIChatService {
                 history.subList(0, history.size() - 20).clear();
             }
 
-            // 토큰 차감
+            // 토큰 차감 (실제 사용량의 50%만 차감)
             Long memberId = getCurrentMemberId();
             Integer remainingTokens = null;
             if (memberId != null && geminiResponse.getTotalTokens() != null) {
                 try {
-                    remainingTokens = billingService.consumeTokens(memberId, geminiResponse.getTotalTokens());
-                    log.info("토큰 차감 완료: memberId={}, used={}, remaining={}",
-                            memberId, geminiResponse.getTotalTokens(), remainingTokens);
+                    int actualTokenUsed = geminiResponse.getTotalTokens();
+                    int tokensToDeduct = (int) Math.ceil(actualTokenUsed / 2.0);  // 반만 차감 (올림)
+
+                    remainingTokens = billingService.consumeTokens(memberId, tokensToDeduct);
+                    log.info("토큰 차감 완료: memberId={}, actualUsed={}, deducted={}, remaining={}",
+                            memberId, actualTokenUsed, tokensToDeduct, remainingTokens);
                 } catch (IllegalStateException e) {
                     log.error("토큰 차감 실패: {}", e.getMessage());
                     throw new RuntimeException("토큰이 부족합니다. 토큰을 구매해주세요.");
