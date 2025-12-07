@@ -94,17 +94,51 @@ public class PaymentController {
     }
 
     /**
-     * 결제 내역 조회 (Mock)
+     * 결제 내역 조회 (DB)
      */
     @GetMapping("/history")
     public ResponseEntity<List<PaymentHistoryResponse>> getPaymentHistory(@PathVariable Long userId) {
         Member member = getMemberById(userId);
 
-        // Mock 데이터 반환 (DB 연결 시 실제 조회로 교체)
-        List<PaymentHistoryResponse> history = createMockPaymentHistory();
+        // DB에서 실제 결제 내역 조회
+        List<com.budgetops.backend.billing.entity.PaymentHistory> paymentHistories =
+                paymentService.getPaymentHistory(member);
+
+        // DTO로 변환
+        List<PaymentHistoryResponse> history = paymentHistories.stream()
+                .map(this::convertToPaymentHistoryResponse)
+                .collect(java.util.stream.Collectors.toList());
 
         log.info("결제 내역 조회: userId={}, count={}", userId, history.size());
         return ResponseEntity.ok(history);
+    }
+
+    /**
+     * PaymentHistory 엔티티를 PaymentHistoryResponse DTO로 변환
+     */
+    private PaymentHistoryResponse convertToPaymentHistoryResponse(
+            com.budgetops.backend.billing.entity.PaymentHistory history) {
+        return PaymentHistoryResponse.builder()
+                .id(history.getMerchantUid())  // 주문 번호를 ID로 사용
+                .date(history.getPaidAt() != null
+                        ? history.getPaidAt().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+                        : history.getCreatedAt().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE))
+                .amount(history.getAmount())
+                .status(convertPaymentStatus(history.getStatus()))
+                .invoiceUrl("#")  // TODO: 실제 인보이스 URL 구현
+                .build();
+    }
+
+    /**
+     * PaymentStatus enum을 문자열로 변환
+     */
+    private String convertPaymentStatus(com.budgetops.backend.billing.enums.PaymentStatus status) {
+        return switch (status) {
+            case PAID -> "paid";
+            case PENDING -> "pending";
+            case FAILED -> "failed";
+            default -> "pending";
+        };
     }
 
     private List<PaymentHistoryResponse> createMockPaymentHistory() {

@@ -2,9 +2,11 @@ package com.budgetops.backend.billing.service;
 
 import com.budgetops.backend.domain.user.entity.Member;
 import com.budgetops.backend.billing.entity.Payment;
+import com.budgetops.backend.billing.entity.PaymentHistory;
 import com.budgetops.backend.billing.enums.PaymentStatus;
 import com.budgetops.backend.billing.exception.PaymentVerificationException;
 import com.budgetops.backend.billing.repository.PaymentRepository;
+import com.budgetops.backend.billing.repository.PaymentHistoryRepository;
 import com.siot.IamportRestClient.IamportClient;
 import com.siot.IamportRestClient.exception.IamportResponseException;
 import com.siot.IamportRestClient.request.AgainPaymentData;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -26,6 +29,7 @@ import java.util.Optional;
 public class PaymentService {
 
     private final PaymentRepository paymentRepository;
+    private final PaymentHistoryRepository paymentHistoryRepository;
     private final IamportClient iamportClient;
 
     /**
@@ -161,12 +165,79 @@ public class PaymentService {
             }
 
             String impUid = response.getResponse().getImpUid();
+            String payMethod = response.getResponse().getPayMethod();
+
+            // 결제 내역 저장
+            savePaymentHistory(member, impUid, merchantUid, amount, orderName, payMethod);
+
             log.info("빌링키 결제 성공: memberId={}, impUid={}, amount={}", member.getId(), impUid, amount);
             return impUid;
 
         } catch (IamportResponseException | IOException e) {
             log.error("빌링키 결제 실패: memberId={}, error={}", member.getId(), e.getMessage());
+
+            // 실패한 결제 내역도 저장
+            saveFailedPaymentHistory(member, merchantUid, amount, orderName, e.getMessage());
+
             throw new PaymentVerificationException("빌링키 결제에 실패했습니다: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 결제 내역 저장 (성공)
+     */
+    public PaymentHistory savePaymentHistory(Member member, String impUid, String merchantUid,
+                                             Integer amount, String orderName, String paymentMethod) {
+        PaymentHistory history = PaymentHistory.builder()
+                .member(member)
+                .impUid(impUid)
+                .merchantUid(merchantUid)
+                .amount(amount)
+                .orderName(orderName)
+                .paymentMethod(paymentMethod)
+                .status(PaymentStatus.PAID)
+                .paidAt(LocalDateTime.now())
+                .build();
+
+        PaymentHistory saved = paymentHistoryRepository.save(history);
+        log.info("결제 내역 저장: memberId={}, impUid={}, amount={}", member.getId(), impUid, amount);
+        return saved;
+    }
+
+    /**
+     * 결제 내역 저장 (실패)
+     */
+    private PaymentHistory saveFailedPaymentHistory(Member member, String merchantUid,
+                                                    Integer amount, String orderName, String failedReason) {
+        PaymentHistory history = PaymentHistory.builder()
+                .member(member)
+                .impUid("FAILED_" + merchantUid)
+                .merchantUid(merchantUid)
+                .amount(amount)
+                .orderName(orderName)
+                .status(PaymentStatus.FAILED)
+                .failedReason(failedReason)
+                .build();
+
+        PaymentHistory saved = paymentHistoryRepository.save(history);
+        log.info("실패 결제 내역 저장: memberId={}, merchantUid={}, reason={}",
+                member.getId(), merchantUid, failedReason);
+        return saved;
+    }
+
+    /**
+     * 회원의 결제 내역 조회
+     */
+    @Transactional(readOnly = true)
+    public List<PaymentHistory> getPaymentHistory(Member member) {
+        return paymentHistoryRepository.findByMemberOrderByCreatedAtDesc(member);
+    }
+
+    /**
+     * 회원 ID로 결제 내역 조회
+     */
+    @Transactional(readOnly = true)
+    public List<PaymentHistory> getPaymentHistoryByMemberId(Long memberId) {
+        return paymentHistoryRepository.findByMemberIdOrderByCreatedAtDesc(memberId);
     }
 }
