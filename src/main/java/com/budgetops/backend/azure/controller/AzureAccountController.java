@@ -110,29 +110,31 @@ public class AzureAccountController {
     }
 
     /**
-     * 특정 Azure 계정의 VM 프리티어 사용량 조회 (근사치)
+     * 특정 Azure 계정의 크레딧 기반 프리티어 사용량 조회 (근사치)
      * GET /api/azure/accounts/{accountId}/freetier/usage
+     *
+     * 쿼리 파라미터:
+     * - startDate, endDate: 분석에 사용할 기간 (미지정 시 크레딧 기간과 동일)
+     * - creditLimit: 크레딧 한도 (미지정 시 기본 200 USD 가정)
+     * - creditStart, creditEnd: 크레딧 유효 기간 (미지정 시 오늘 ~ 오늘+1개월)
      */
     @GetMapping("/{accountId}/freetier/usage")
     public ResponseEntity<AzureFreeTierService.FreeTierUsage> getFreeTierUsage(
             @PathVariable Long accountId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Double creditLimit,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate creditStart,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate creditEnd
     ) {
-        // 기본값: 현재 달 기준 (1일 ~ 오늘)
-        LocalDate now = LocalDate.now();
-        if (startDate == null) {
-            startDate = now.withDayOfMonth(1);
-        }
-        if (endDate == null) {
-            endDate = now;
-        }
-
-        AzureFreeTierService.FreeTierUsage usage = freeTierService.getVmFreeTierUsage(
+        AzureFreeTierService.FreeTierUsage usage = freeTierService.getCreditFreeTierUsage(
                 accountId,
                 getCurrentMemberId(),
                 startDate,
-                endDate
+                endDate,
+                creditLimit,
+                creditStart,
+                creditEnd
         );
         return ResponseEntity.ok(usage);
     }

@@ -10,11 +10,16 @@ package com.budgetops.backend.azure.constants;
  */
 public class AzureFreeTierLimits {
 
+    private AzureFreeTierLimits() {
+        // 상수 클래스
+    }
+
     /**
-     * VM 프리티어 한도 (시간 단위)
-     * - Standard_B1s 기준 월 750시간
+     * Azure 기본 가입 크레딧 한도 (USD 기준)
+     * - Azure sign-up credit 기본 200달러를 기준값으로 사용합니다.
+     * - 실제 크레딧 한도가 다를 경우, 추후 계정 설정/입력을 통해 오버라이드할 수 있습니다.
      */
-    public static final double VM_FREE_TIER_HOURS_PER_MONTH = 750.0;
+    public static final double AZURE_SIGNUP_CREDIT_USD = 200.0;
 
     /**
      * 프리티어 대상 VM Size 인지 확인
@@ -26,11 +31,9 @@ public class AzureFreeTierLimits {
      * @return 프리티어 대상이면 true
      */
     public static boolean isFreeTierVmSize(String vmSize) {
-        if (vmSize == null || vmSize.isBlank()) {
-            return false;
-        }
-        String normalized = vmSize.trim().toLowerCase();
-        return normalized.equals("standard_b1s");
+        // VM 사이즈 기반 프리티어 판단은 더 이상 사용하지 않지만,
+        // 하위 호환성을 위해 메서드는 유지합니다.
+        return false;
     }
 }
 
