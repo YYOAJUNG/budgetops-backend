@@ -16,6 +16,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -45,9 +47,10 @@ public class MemberService {
     public Member upsertOAuthMember(String email, String name) {
         return memberRepository.findByEmail(email)
                 .map(existingMember -> {
-                    // 기존 회원 - name 업데이트
+                    // 기존 회원 - name 업데이트 및 마지막 로그인 시간 업데이트
                     log.info("Existing member login: email={}, id={}", email, existingMember.getId());
                     existingMember.setName(name);
+                    existingMember.setLastLoginAt(LocalDateTime.now());
                     return memberRepository.save(existingMember);
                 })
                 .orElseGet(() -> {
@@ -55,6 +58,7 @@ public class MemberService {
                     Member newMember = Member.builder()
                             .email(email)
                             .name(name)
+                            .lastLoginAt(LocalDateTime.now()) // 신규 회원도 로그인 시간 설정
                             .build();
                     Member savedMember = memberRepository.save(newMember);
                     billingService.initializeBilling(savedMember);

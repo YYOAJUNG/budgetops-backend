@@ -53,4 +53,7 @@ public class Member {
     @Column(name = "slack_notifications_enabled")
     @Builder.Default
     private Boolean slackNotificationsEnabled = Boolean.FALSE;
+
+    @Column(name = "last_login_at")
+    private LocalDateTime lastLoginAt; // 마지막 로그인 시각
 }

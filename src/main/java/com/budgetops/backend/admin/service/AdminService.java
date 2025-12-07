@@ -78,6 +78,7 @@ public class AdminService {
                     .email(member.getEmail())
                     .name(member.getName())
                     .createdAt(member.getCreatedAt())
+                    .lastLoginAt(member.getLastLoginAt()) // 마지막 로그인 시각 추가
                     .billingPlan(billing != null ? billing.getCurrentPlan().name() : "FREE")
                     .currentTokens(billing != null ? billing.getCurrentTokens() : 0)
                     .cloudAccountCount(totalCloudAccountCount)
