@@ -76,7 +76,10 @@ public class GcpAccountController {
     public ResponseEntity<GcpFreeTierService.FreeTierUsage> getFreeTierUsage(
             @PathVariable Long accountId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Double creditLimit,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate creditStart,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate creditEnd
     ) {
         LocalDate now = LocalDate.now();
         if (startDate == null) {
@@ -86,14 +89,14 @@ public class GcpAccountController {
             endDate = now.plusDays(1);
         }
 
-        String start = startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
-        String end = endDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
-
         GcpFreeTierService.FreeTierUsage usage = freeTierService.getFreeTierUsage(
                 accountId,
                 getCurrentMemberId(),
-                start,
-                end
+                startDate,
+                endDate,
+                creditLimit,
+                creditStart,
+                creditEnd
         );
         return ResponseEntity.ok(usage);
     }
