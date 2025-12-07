@@ -52,9 +52,11 @@ public class AdminService {
     @Transactional(readOnly = true)
     public Page<UserListResponse> getUserList(Pageable pageable, String search) {
         // 기본 정렬: lastLoginAt이 있는 것 우선, 최신순
+        // lastLoginAt이 없는 것들은 가입일 기준 최신순
         Sort sort = Sort.by(
             Sort.Order.asc("lastLoginAt").nullsLast(), // null이 아닌 것 우선
-            Sort.Order.desc("lastLoginAt") // 최신순
+            Sort.Order.desc("lastLoginAt"), // 최신순
+            Sort.Order.desc("createdAt") // lastLoginAt이 null인 경우 가입일 기준 최신순
         );
         
         // 사용자가 정렬을 지정했으면 그걸 사용, 아니면 기본 정렬 사용
