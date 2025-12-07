@@ -51,27 +51,21 @@ public class AdminService {
      */
     @Transactional(readOnly = true)
     public Page<UserListResponse> getUserList(Pageable pageable, String search) {
-        // 기본 정렬: lastLoginAt이 있는 것 우선, 최신순
-        // lastLoginAt이 없는 것들은 가입일 기준 최신순
-        Sort sort = Sort.by(
-            Sort.Order.asc("lastLoginAt").nullsLast(), // null이 아닌 것 우선
-            Sort.Order.desc("lastLoginAt"), // 최신순
-            Sort.Order.desc("createdAt") // lastLoginAt이 null인 경우 가입일 기준 최신순
-        );
-        
-        // 사용자가 정렬을 지정했으면 그걸 사용, 아니면 기본 정렬 사용
-        Pageable sortedPageable = pageable.getSort().isSorted() 
-            ? pageable 
-            : PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort);
-        
         Page<Member> members;
         
         if (search != null && !search.trim().isEmpty()) {
             String searchTerm = search.trim();
-            members = memberRepository.findByNameContainingIgnoreCaseOrEmailContainingIgnoreCase(
-                    searchTerm, searchTerm, sortedPageable);
+            // 검색 시 정렬된 쿼리 사용
+            members = memberRepository.findByNameContainingIgnoreCaseOrEmailContainingIgnoreCaseOrderByLastLoginAtDesc(
+                    searchTerm, pageable);
         } else {
-            members = memberRepository.findAll(sortedPageable);
+            // 전체 조회 시 정렬된 쿼리 사용
+            // 사용자가 정렬을 지정했으면 그걸 사용, 아니면 기본 정렬 사용
+            if (pageable.getSort().isSorted()) {
+                members = memberRepository.findAll(pageable);
+            } else {
+                members = memberRepository.findAllOrderByLastLoginAtDesc(pageable);
+            }
         }
         
         return members.map(member -> {
