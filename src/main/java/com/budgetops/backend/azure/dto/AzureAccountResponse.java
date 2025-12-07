@@ -13,5 +13,7 @@ public class AzureAccountResponse {
     String clientId;
     String clientSecretLast4;
     boolean active;
+    Boolean hasCredit;
+    Double creditLimitAmount;
 }
 

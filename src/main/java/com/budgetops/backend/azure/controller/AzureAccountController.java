@@ -36,6 +36,8 @@ public class AzureAccountController {
             public final String clientId = saved.getClientId();
             public final String clientSecretLast4 = "****" + (saved.getClientSecretLast4() != null ? saved.getClientSecretLast4() : "");
             public final boolean active = Boolean.TRUE.equals(saved.getActive());
+            public final Boolean hasCredit = saved.getHasCredit();
+            public final Double creditLimitAmount = saved.getCreditLimitAmount();
         });
     }
 
@@ -148,6 +150,8 @@ public class AzureAccountController {
                 .clientId(account.getClientId())
                 .clientSecretLast4("****" + (account.getClientSecretLast4() != null ? account.getClientSecretLast4() : ""))
                 .active(Boolean.TRUE.equals(account.getActive()))
+                .hasCredit(account.getHasCredit())
+                .creditLimitAmount(account.getCreditLimitAmount())
                 .build();
     }
 
