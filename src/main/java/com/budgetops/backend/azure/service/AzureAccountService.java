@@ -84,6 +84,7 @@ public class AzureAccountService {
         String secret = request.getClientSecret();
         account.setClientSecretLast4(secret.substring(Math.max(0, secret.length() - 4)));
         account.setActive(Boolean.TRUE);
+        // 크레딧 기본 설정은 엔티티의 기본값(hasCredit=true)과 null 한도를 사용
 
         return accountRepository.save(account);
     }

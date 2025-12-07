@@ -1,6 +1,7 @@
 package com.budgetops.backend.azure.service;
 
 import com.budgetops.backend.azure.constants.AzureFreeTierLimits;
+import com.budgetops.backend.azure.entity.AzureAccount;
 import com.budgetops.backend.azure.repository.AzureAccountRepository;
 import lombok.Builder;
 import lombok.Value;
@@ -51,14 +52,31 @@ public class AzureFreeTierService {
             LocalDate creditStartDate,
             LocalDate creditEndDate
     ) {
-        // 계정 소유자 검증
-        accountRepository.findByIdAndOwnerId(accountId, memberId)
+        // 계정 및 소유자 검증
+        AzureAccount account = accountRepository.findByIdAndOwnerId(accountId, memberId)
                 .orElseThrow(() -> new IllegalArgumentException("Azure 계정을 찾을 수 없습니다."));
 
-        // 크레딧 기간 기본값 설정
+        // 크레딧을 사용하지 않는 계정인 경우 0으로 반환
+        if (Boolean.FALSE.equals(account.getHasCredit())) {
+            return FreeTierUsage.builder()
+                    .usedAmount(0.0)
+                    .creditLimitAmount(0.0)
+                    .remainingAmount(0.0)
+                    .percentage(0.0)
+                    .currency("USD")
+                    .creditStartDate(null)
+                    .creditEndDate(null)
+                    .build();
+        }
+
+        // 크레딧 기간 기본값 설정 (우선순위: 파라미터 > 계정 설정 > 오늘 기준 기본값)
         LocalDate today = LocalDate.now();
-        LocalDate effectiveCreditStart = creditStartDate != null ? creditStartDate : today;
-        LocalDate effectiveCreditEnd = creditEndDate != null ? creditEndDate : effectiveCreditStart.plusMonths(1);
+        LocalDate effectiveCreditStart = creditStartDate != null
+                ? creditStartDate
+                : (account.getCreditStartDate() != null ? account.getCreditStartDate() : today);
+        LocalDate effectiveCreditEnd = creditEndDate != null
+                ? creditEndDate
+                : (account.getCreditEndDate() != null ? account.getCreditEndDate() : effectiveCreditStart.plusMonths(1));
 
         if (effectiveCreditEnd.isBefore(effectiveCreditStart)) {
             throw new IllegalArgumentException("크레딧 종료일은 시작일 이후여야 합니다.");
@@ -90,7 +108,9 @@ public class AzureFreeTierService {
 
         double limit = creditLimitAmount != null && creditLimitAmount > 0
                 ? creditLimitAmount
-                : AzureFreeTierLimits.AZURE_SIGNUP_CREDIT_USD;
+                : (account.getCreditLimitAmount() != null && account.getCreditLimitAmount() > 0
+                    ? account.getCreditLimitAmount()
+                    : AzureFreeTierLimits.AZURE_SIGNUP_CREDIT_USD);
 
         double remaining = Math.max(0.0, limit - usedAmount);
         double percentage = limit > 0
