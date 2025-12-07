@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 @Service
@@ -114,11 +115,13 @@ public class BillingService {
         // 다음 결제일 업데이트 (유료 플랜인 경우에만)
         if (!newPlan.isFree()) {
             billing.setNextBillingDateFromNow();
-            log.info("다음 결제일 설정: memberId={}, nextBillingDate={}",
+            billing.reactivateSubscription(); // PRO 플랜 결제 시 구독 재활성화
+            log.info("다음 결제일 설정 및 구독 활성화: memberId={}, nextBillingDate={}",
                     member.getId(), billing.getNextBillingDate());
         } else {
             // FREE 플랜으로 변경 시 결제일 초기화
             billing.setNextBillingDate(null);
+            billing.reactivateSubscription(); // FREE 플랜도 ACTIVE 상태
             log.info("FREE 플랜으로 변경, 결제일 초기화: memberId={}", member.getId());
         }
 
@@ -186,5 +189,59 @@ public class BillingService {
         return billingRepository.findByMemberId(memberId)
                 .map(Billing::getCurrentTokens)
                 .orElse(0);
+    }
+
+    /**
+     * 구독 취소 (다음 결제일까지 현재 플랜 유지)
+     */
+    public Billing cancelSubscription(Member member) {
+        Billing billing = billingRepository.findByMember(member)
+                .orElseThrow(() -> new BillingNotFoundException(member.getId()));
+
+        // FREE 플랜은 취소할 수 없음
+        if (billing.isFreePlan()) {
+            throw new IllegalStateException("FREE 플랜은 취소할 수 없습니다.");
+        }
+
+        // 이미 취소된 구독
+        if (billing.isCanceled()) {
+            log.warn("이미 취소된 구독입니다: memberId={}", member.getId());
+            return billing;
+        }
+
+        // 구독 취소 (상태만 변경, 플랜과 다음 결제일은 유지)
+        billing.cancelSubscription();
+        billingRepository.save(billing);
+
+        log.info("구독 취소: memberId={}, plan={}, nextBillingDate={}, 만료 시 FREE로 전환 예정",
+                member.getId(), billing.getCurrentPlan(), billing.getNextBillingDate());
+
+        return billing;
+    }
+
+    /**
+     * 만료된 구독을 FREE 플랜으로 다운그레이드
+     * 스케줄러에서 호출
+     */
+    public void downgradeExpiredSubscriptions() {
+        // CANCELED 상태이면서 다음 결제일이 지난 구독 조회
+        billingRepository.findAll().stream()
+                .filter(Billing::isCanceled)
+                .filter(billing -> billing.getNextBillingDate() != null)
+                .filter(billing -> billing.getNextBillingDate().isBefore(LocalDateTime.now()))
+                .forEach(billing -> {
+                    log.info("만료된 구독 다운그레이드: memberId={}, oldPlan={}, nextBillingDate={}",
+                            billing.getMember().getId(), billing.getCurrentPlan(), billing.getNextBillingDate());
+
+                    // FREE 플랜으로 변경
+                    billing.changePlan(BillingPlan.FREE);
+                    billing.setNextBillingDate(null);
+                    billing.reactivateSubscription(); // FREE 플랜은 ACTIVE 상태로
+
+                    billingRepository.save(billing);
+
+                    log.info("구독 다운그레이드 완료: memberId={}, newPlan=FREE",
+                            billing.getMember().getId());
+                });
     }
 }
