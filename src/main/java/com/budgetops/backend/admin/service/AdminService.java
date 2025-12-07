@@ -7,8 +7,10 @@ import com.budgetops.backend.azure.repository.AzureAccountRepository;
 import com.budgetops.backend.billing.constants.TokenConstants;
 import com.budgetops.backend.billing.entity.Billing;
 import com.budgetops.backend.billing.entity.Payment;
+import com.budgetops.backend.billing.entity.PaymentHistory;
 import com.budgetops.backend.billing.exception.BillingNotFoundException;
 import com.budgetops.backend.billing.repository.BillingRepository;
+import com.budgetops.backend.billing.repository.PaymentHistoryRepository;
 import com.budgetops.backend.billing.repository.PaymentRepository;
 import com.budgetops.backend.domain.user.entity.Member;
 import com.budgetops.backend.domain.user.repository.MemberRepository;
@@ -21,8 +23,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +37,7 @@ public class AdminService {
     private final MemberRepository memberRepository;
     private final BillingRepository billingRepository;
     private final PaymentRepository paymentRepository;
+    private final PaymentHistoryRepository paymentHistoryRepository;
     private final AwsAccountRepository awsAccountRepository;
     private final AzureAccountRepository azureAccountRepository;
     private final GcpAccountRepository gcpAccountRepository;
@@ -84,27 +90,26 @@ public class AdminService {
     }
 
     /**
-     * 전체 사용자의 결제 내역 조회
+     * 전체 사용자의 결제 내역 조회 (Payment + PaymentHistory 통합)
      * @param search 검색어 (사용자 이름 또는 이메일, 선택사항)
      */
     @Transactional(readOnly = true)
     public List<AdminPaymentHistoryResponse> getAllPaymentHistory(String search) {
-        List<Payment> payments;
+        List<AdminPaymentHistoryResponse> responses = new ArrayList<>();
         
+        // Payment 엔티티 조회 (멤버십 결제 등록 정보)
+        List<Payment> payments;
         if (search != null && !search.trim().isEmpty()) {
-            // 검색어가 있으면 검색 쿼리 사용
             payments = paymentRepository.findByMemberNameOrEmailContaining(search.trim());
         } else {
-            // 검색어가 없으면 전체 조회
             payments = paymentRepository.findAll();
         }
         
-        return payments.stream()
+        // Payment를 AdminPaymentHistoryResponse로 변환
+        responses.addAll(payments.stream()
                 .map(payment -> {
                     Member member = payment.getMember();
-                    // Payment 엔티티에는 결제 타입 정보가 없으므로 기본값으로 설정
-                    // 나중에 PaymentHistory 엔티티를 추가하면 실제 타입을 구분할 수 있음
-                    String paymentType = "MEMBERSHIP"; // 기본값
+                    String paymentType = "MEMBERSHIP";
                     
                     return AdminPaymentHistoryResponse.builder()
                             .id(payment.getId())
@@ -119,7 +124,50 @@ public class AdminService {
                             .lastVerifiedAt(payment.getLastVerifiedAt())
                             .build();
                 })
-                .collect(Collectors.toList());
+                .collect(Collectors.toList()));
+        
+        // PaymentHistory 엔티티 조회 (토큰 구매 등 실제 결제 내역)
+        List<PaymentHistory> paymentHistories;
+        if (search != null && !search.trim().isEmpty()) {
+            paymentHistories = paymentHistoryRepository.findByMemberNameOrEmailContaining(search.trim());
+        } else {
+            paymentHistories = paymentHistoryRepository.findAll();
+        }
+        
+        // PaymentHistory를 AdminPaymentHistoryResponse로 변환
+        responses.addAll(paymentHistories.stream()
+                .map(history -> {
+                    Member member = history.getMember();
+                    // orderName에 "토큰"이 포함되어 있으면 TOKEN_PURCHASE, 아니면 MEMBERSHIP
+                    String paymentType = (history.getOrderName() != null && 
+                                         history.getOrderName().contains("토큰")) 
+                                        ? "TOKEN_PURCHASE" 
+                                        : "MEMBERSHIP";
+                    
+                    return AdminPaymentHistoryResponse.builder()
+                            .id(history.getId())
+                            .userId(member.getId())
+                            .userEmail(member.getEmail())
+                            .userName(member.getName())
+                            .paymentType(paymentType)
+                            .impUid(history.getImpUid())
+                            .amount(history.getAmount())
+                            .status(history.getStatus().name())
+                            .createdAt(history.getCreatedAt())
+                            .lastVerifiedAt(history.getPaidAt()) // PaymentHistory는 paidAt 사용
+                            .build();
+                })
+                .collect(Collectors.toList()));
+        
+        // createdAt 기준으로 최신순 정렬
+        responses.sort((a, b) -> {
+            if (a.getCreatedAt() == null && b.getCreatedAt() == null) return 0;
+            if (a.getCreatedAt() == null) return 1;
+            if (b.getCreatedAt() == null) return -1;
+            return b.getCreatedAt().compareTo(a.getCreatedAt());
+        });
+        
+        return responses;
     }
 
     /**
