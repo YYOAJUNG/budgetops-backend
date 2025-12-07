@@ -4,6 +4,11 @@ import com.budgetops.backend.aws.dto.AwsEc2InstanceResponse;
 import com.budgetops.backend.aws.entity.AwsAccount;
 import com.budgetops.backend.aws.repository.AwsAccountRepository;
 import com.budgetops.backend.aws.service.AwsEc2Service;
+import com.budgetops.backend.gcp.dto.GcpResourceListResponse;
+import com.budgetops.backend.gcp.dto.GcpResourceResponse;
+import com.budgetops.backend.gcp.entity.GcpAccount;
+import com.budgetops.backend.gcp.repository.GcpAccountRepository;
+import com.budgetops.backend.gcp.service.GcpResourceService;
 import com.budgetops.backend.simulator.dto.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +33,8 @@ public class RecommendationService {
     private final SimulationService simulationService;
     private final AwsAccountRepository awsAccountRepository;
     private final AwsEc2Service awsEc2Service;
+    private final GcpAccountRepository gcpAccountRepository;
+    private final GcpResourceService gcpResourceService;
     private final UcasRuleLoader ucasRuleLoader;
     
     /**
@@ -36,15 +43,15 @@ public class RecommendationService {
     public List<RecommendationResponse> getTopRecommendations() {
         log.info("Generating top recommendations based on actual resources");
         
-        // 1. 활성 AWS 계정의 EC2 인스턴스 조회
-        List<String> resourceIds = getAllEc2InstanceIds();
+        // 1. 활성 AWS 계정의 EC2 인스턴스 + GCP 리소스 조회
+        List<String> resourceIds = getAllResourceIds();
         
         if (resourceIds.isEmpty()) {
-            log.warn("No EC2 instances found, returning empty recommendations");
+            log.warn("No resources found, returning empty recommendations");
             return new ArrayList<>();
         }
         
-        log.info("Found {} EC2 instances for recommendation", resourceIds.size());
+        log.info("Found {} resources for recommendation", resourceIds.size());
         
         // 2. 각 액션 타입별로 시뮬레이션 실행
         List<SimulationResult> allResults = new ArrayList<>();
@@ -201,16 +208,17 @@ public class RecommendationService {
     }
     
     /**
-     * 모든 활성 AWS 계정의 EC2 인스턴스 ID 수집
+     * 모든 활성 AWS 계정의 EC2 인스턴스 ID + GCP 리소스 ID 수집
      */
-    private List<String> getAllEc2InstanceIds() {
-        List<String> instanceIds = new ArrayList<>();
+    private List<String> getAllResourceIds() {
+        List<String> resourceIds = new ArrayList<>();
         
-        List<AwsAccount> activeAccounts = awsAccountRepository.findAll().stream()
+        // AWS EC2 인스턴스 조회
+        List<AwsAccount> activeAwsAccounts = awsAccountRepository.findAll().stream()
                 .filter(account -> Boolean.TRUE.equals(account.getActive()))
                 .collect(Collectors.toList());
         
-        for (AwsAccount account : activeAccounts) {
+        for (AwsAccount account : activeAwsAccounts) {
             try {
                 String region = account.getDefaultRegion() != null ? account.getDefaultRegion() : "us-east-1";
                 List<AwsEc2InstanceResponse> instances = awsEc2Service.listInstances(account.getId(), region);
@@ -221,16 +229,40 @@ public class RecommendationService {
                         .map(AwsEc2InstanceResponse::getInstanceId)
                         .collect(Collectors.toList());
                 
-                instanceIds.addAll(runningInstanceIds);
-                log.debug("Found {} running instances in account {} (region: {})", 
+                resourceIds.addAll(runningInstanceIds);
+                log.debug("Found {} running EC2 instances in AWS account {} (region: {})", 
                         runningInstanceIds.size(), account.getId(), region);
                 
             } catch (Exception e) {
-                log.warn("Failed to fetch EC2 instances for account {}: {}", account.getId(), e.getMessage());
+                log.warn("Failed to fetch EC2 instances for AWS account {}: {}", account.getId(), e.getMessage());
             }
         }
         
-        return instanceIds;
+        // GCP 리소스 조회
+        List<GcpAccount> activeGcpAccounts = gcpAccountRepository.findAll().stream()
+                .filter(account -> Boolean.TRUE.equals(account.getActive()))
+                .collect(Collectors.toList());
+        
+        for (GcpAccount account : activeGcpAccounts) {
+            try {
+                GcpResourceListResponse response = gcpResourceService.listResources(account.getId(), account.getOwner().getId());
+                
+                // RUNNING 상태인 리소스만 필터링
+                List<String> runningResourceIds = response.getResources().stream()
+                        .filter(resource -> "RUNNING".equalsIgnoreCase(resource.getStatus()))
+                        .map(GcpResourceResponse::getResourceId)
+                        .collect(Collectors.toList());
+                
+                resourceIds.addAll(runningResourceIds);
+                log.debug("Found {} running resources in GCP account {} (project: {})", 
+                        runningResourceIds.size(), account.getId(), account.getProjectId());
+                
+            } catch (Exception e) {
+                log.warn("Failed to fetch GCP resources for account {}: {}", account.getId(), e.getMessage());
+            }
+        }
+        
+        return resourceIds;
     }
     
     /**
@@ -304,7 +336,7 @@ public class RecommendationService {
     }
     
     /**
-     * 근거 설명을 위한 리소스 정보 조회
+     * 근거 설명을 위한 리소스 정보 조회 (AWS + GCP)
      */
     private String getResourceInfoForBasis(String resourceId) {
         if (resourceId == null || resourceId.isEmpty()) {
@@ -312,12 +344,12 @@ public class RecommendationService {
         }
         
         try {
-            // 활성 AWS 계정에서 리소스 찾기
-            List<AwsAccount> activeAccounts = awsAccountRepository.findAll().stream()
+            // AWS EC2 인스턴스에서 리소스 찾기
+            List<AwsAccount> activeAwsAccounts = awsAccountRepository.findAll().stream()
                     .filter(account -> Boolean.TRUE.equals(account.getActive()))
                     .collect(Collectors.toList());
             
-            for (AwsAccount account : activeAccounts) {
+            for (AwsAccount account : activeAwsAccounts) {
                 try {
                     String region = account.getDefaultRegion() != null ? account.getDefaultRegion() : "us-east-1";
                     List<AwsEc2InstanceResponse> instances = awsEc2Service.listInstances(account.getId(), region);
@@ -325,8 +357,7 @@ public class RecommendationService {
                     // resourceId와 일치하는 인스턴스 찾기
                     for (AwsEc2InstanceResponse instance : instances) {
                         if (resourceId.equals(instance.getInstanceId())) {
-                            // 리소스 정보 반환
-                            String serviceName = "EC2";
+                            String serviceName = "AWS EC2";
                             String instanceType = instance.getInstanceType() != null ? instance.getInstanceType() : "N/A";
                             String instanceName = instance.getName() != null ? instance.getName() : resourceId;
                             
@@ -335,15 +366,60 @@ public class RecommendationService {
                         }
                     }
                 } catch (Exception e) {
-                    log.debug("Failed to fetch instances for account {}: {}", account.getId(), e.getMessage());
+                    log.debug("Failed to fetch EC2 instances for AWS account {}: {}", account.getId(), e.getMessage());
+                }
+            }
+            
+            // GCP 리소스에서 찾기
+            List<GcpAccount> activeGcpAccounts = gcpAccountRepository.findAll().stream()
+                    .filter(account -> Boolean.TRUE.equals(account.getActive()))
+                    .collect(Collectors.toList());
+            
+            for (GcpAccount account : activeGcpAccounts) {
+                try {
+                    GcpResourceListResponse response = gcpResourceService.listResources(account.getId(), account.getOwner().getId());
+                    
+                    // resourceId와 일치하는 리소스 찾기
+                    for (GcpResourceResponse resource : response.getResources()) {
+                        if (resourceId.equals(resource.getResourceId())) {
+                            String serviceName = "GCP Compute Engine";
+                            String machineType = "N/A";
+                            
+                            // additionalAttributes에서 machineType 추출
+                            if (resource.getAdditionalAttributes() != null && 
+                                resource.getAdditionalAttributes().containsKey("machineType")) {
+                                Object machineTypeObj = resource.getAdditionalAttributes().get("machineType");
+                                if (machineTypeObj != null) {
+                                    String machineTypePath = machineTypeObj.toString();
+                                    // "projects/.../zones/.../machineTypes/n1-standard-1" -> "n1-standard-1"
+                                    if (machineTypePath.contains("/machineTypes/")) {
+                                        String[] parts = machineTypePath.split("/machineTypes/");
+                                        if (parts.length > 1) {
+                                            machineType = parts[1];
+                                        }
+                                    } else {
+                                        machineType = machineTypePath;
+                                    }
+                                }
+                            }
+                            
+                            String resourceName = resource.getResourceName() != null ? resource.getResourceName() : resourceId;
+                            String region = resource.getRegion() != null ? resource.getRegion() : "N/A";
+                            
+                            return String.format("• 적용 리소스: %s (%s)\n• 서비스: %s\n• 머신 타입: %s\n• 리전: %s",
+                                    resourceName, resourceId, serviceName, machineType, region);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debug("Failed to fetch GCP resources for account {}: {}", account.getId(), e.getMessage());
                 }
             }
             
             // 리소스를 찾지 못한 경우 기본 정보만 반환
-            return String.format("• 적용 리소스: %s\n• 서비스: EC2", resourceId);
+            return String.format("• 적용 리소스: %s\n• 서비스: Compute", resourceId);
         } catch (Exception e) {
             log.warn("Failed to get resource info for basis: {}", e.getMessage());
-            return String.format("• 적용 리소스: %s\n• 서비스: EC2", resourceId);
+            return String.format("• 적용 리소스: %s\n• 서비스: Compute", resourceId);
         }
     }
     
