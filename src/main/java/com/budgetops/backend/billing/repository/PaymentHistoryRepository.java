@@ -35,6 +35,6 @@ public interface PaymentHistoryRepository extends JpaRepository<PaymentHistory, 
     /**
      * 사용자 이름 또는 이메일로 결제 내역 검색
      */
-    @Query("SELECT ph FROM PaymentHistory ph JOIN ph.member m WHERE m.name LIKE %:search% OR m.email LIKE %:search%")
+    @Query("SELECT ph FROM PaymentHistory ph JOIN ph.member m WHERE m.name LIKE CONCAT('%', :search, '%') OR m.email LIKE CONCAT('%', :search, '%')")
     List<PaymentHistory> findByMemberNameOrEmailContaining(@Param("search") String search);
 }

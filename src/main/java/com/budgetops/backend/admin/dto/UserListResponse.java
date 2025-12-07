@@ -16,6 +16,7 @@ public class UserListResponse {
     private String email;
     private String name;
     private LocalDateTime createdAt;
+    private LocalDateTime lastLoginAt; // 마지막 로그인 시각 추가
     private String billingPlan;
     private Integer currentTokens;
     private Integer cloudAccountCount;
