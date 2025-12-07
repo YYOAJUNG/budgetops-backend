@@ -20,6 +20,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,16 +51,25 @@ public class AdminService {
      */
     @Transactional(readOnly = true)
     public Page<UserListResponse> getUserList(Pageable pageable, String search) {
+        // 기본 정렬: lastLoginAt이 있는 것 우선, 최신순
+        Sort sort = Sort.by(
+            Sort.Order.asc("lastLoginAt").nullsLast(), // null이 아닌 것 우선
+            Sort.Order.desc("lastLoginAt") // 최신순
+        );
+        
+        // 사용자가 정렬을 지정했으면 그걸 사용, 아니면 기본 정렬 사용
+        Pageable sortedPageable = pageable.getSort().isSorted() 
+            ? pageable 
+            : PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort);
+        
         Page<Member> members;
         
         if (search != null && !search.trim().isEmpty()) {
-            // 검색어가 있으면 검색 쿼리 사용
             String searchTerm = search.trim();
             members = memberRepository.findByNameContainingIgnoreCaseOrEmailContainingIgnoreCase(
-                    searchTerm, searchTerm, pageable);
+                    searchTerm, searchTerm, sortedPageable);
         } else {
-            // 검색어가 없으면 전체 조회
-            members = memberRepository.findAll(pageable);
+            members = memberRepository.findAll(sortedPageable);
         }
         
         return members.map(member -> {
