@@ -238,12 +238,10 @@ public class RecommendationService {
             }
         }
         
-        // GCP 리소스 조회
-        List<GcpAccount> activeGcpAccounts = gcpAccountRepository.findAll().stream()
-                .filter(account -> Boolean.TRUE.equals(account.getActive()))
-                .collect(Collectors.toList());
+        // GCP 리소스 조회 (GCP 계정에는 active 필드가 없으므로 모든 계정 조회)
+        List<GcpAccount> gcpAccounts = gcpAccountRepository.findAll();
         
-        for (GcpAccount account : activeGcpAccounts) {
+        for (GcpAccount account : gcpAccounts) {
             try {
                 GcpResourceListResponse response = gcpResourceService.listResources(account.getId(), account.getOwner().getId());
                 
@@ -370,12 +368,10 @@ public class RecommendationService {
                 }
             }
             
-            // GCP 리소스에서 찾기
-            List<GcpAccount> activeGcpAccounts = gcpAccountRepository.findAll().stream()
-                    .filter(account -> Boolean.TRUE.equals(account.getActive()))
-                    .collect(Collectors.toList());
+            // GCP 리소스에서 찾기 (GCP 계정에는 active 필드가 없으므로 모든 계정 조회)
+            List<GcpAccount> gcpAccounts = gcpAccountRepository.findAll();
             
-            for (GcpAccount account : activeGcpAccounts) {
+            for (GcpAccount account : gcpAccounts) {
                 try {
                     GcpResourceListResponse response = gcpResourceService.listResources(account.getId(), account.getOwner().getId());
                     
