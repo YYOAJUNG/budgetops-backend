@@ -46,7 +46,7 @@ public class GcpCredit {
      * 크레딧 레코드 생성 시 설정되며, 사용 시 감소
      * 만료 시 남은 크레딧량은 0으로 설정
      */
-    @Column(nullable = false, precision = 19, scale = 2)
+    @Column(nullable = false)
     private Double creditAmount;
 
     /**
