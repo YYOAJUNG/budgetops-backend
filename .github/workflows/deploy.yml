@@ -38,7 +38,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            # GHCR 로그인(토큰을 서버에 저장하지 않아도 됨)
+            # GHCR 로그인(토큰을 서버에 저장하지 않아도 된다.)
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
             /opt/app/deploy.sh
       - name: Verify health
