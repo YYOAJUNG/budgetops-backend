@@ -102,9 +102,21 @@ public class GcpAccountController {
     }
 
     private Long getCurrentMemberId() {
-        return (Long) SecurityContextHolder.getContext()
+        Object principal = SecurityContextHolder.getContext()
                 .getAuthentication()
                 .getPrincipal();
+        
+        if (principal instanceof Long) {
+            return (Long) principal;
+        } else if (principal instanceof String) {
+            try {
+                return Long.parseLong((String) principal);
+            } catch (NumberFormatException e) {
+                throw new IllegalStateException("Invalid member ID format: " + principal);
+            }
+        } else {
+            throw new IllegalStateException("Unexpected principal type: " + principal.getClass().getName());
+        }
     }
 }
 

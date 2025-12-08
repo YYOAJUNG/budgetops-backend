@@ -2,6 +2,7 @@ package com.budgetops.backend.gcp.controller;
 
 import com.budgetops.backend.gcp.dto.GcpResourceListResponse;
 import com.budgetops.backend.gcp.dto.GcpResourceMetricsResponse;
+import com.budgetops.backend.gcp.service.GcpResourceControlService;
 import com.budgetops.backend.gcp.service.GcpResourceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +17,7 @@ import java.util.List;
 public class GcpResourceController {
 
     private final GcpResourceService service;
+    private final GcpResourceControlService resourceControlService;
 
     @GetMapping("/accounts/{accountId}/resources")
     public ResponseEntity<GcpResourceListResponse> listResources(@PathVariable Long accountId) {
@@ -38,10 +40,49 @@ public class GcpResourceController {
         return ResponseEntity.ok(metrics);
     }
 
+    @PostMapping("/accounts/{accountId}/resources/{resourceId}/start")
+    public ResponseEntity<Void> startInstance(
+            @PathVariable Long accountId,
+            @PathVariable String resourceId
+    ) {
+        resourceControlService.startInstance(accountId, resourceId, getCurrentMemberId());
+        return ResponseEntity.accepted().build();
+    }
+
+    @PostMapping("/accounts/{accountId}/resources/{resourceId}/stop")
+    public ResponseEntity<Void> stopInstance(
+            @PathVariable Long accountId,
+            @PathVariable String resourceId
+    ) {
+        resourceControlService.stopInstance(accountId, resourceId, getCurrentMemberId());
+        return ResponseEntity.accepted().build();
+    }
+
+    @DeleteMapping("/accounts/{accountId}/resources/{resourceId}")
+    public ResponseEntity<Void> deleteInstance(
+            @PathVariable Long accountId,
+            @PathVariable String resourceId
+    ) {
+        resourceControlService.deleteInstance(accountId, resourceId, getCurrentMemberId());
+        return ResponseEntity.noContent().build();
+    }
+
     private Long getCurrentMemberId() {
-        return (Long) SecurityContextHolder.getContext()
+        Object principal = SecurityContextHolder.getContext()
                 .getAuthentication()
                 .getPrincipal();
+        
+        if (principal instanceof Long) {
+            return (Long) principal;
+        } else if (principal instanceof String) {
+            try {
+                return Long.parseLong((String) principal);
+            } catch (NumberFormatException e) {
+                throw new IllegalStateException("Invalid member ID format: " + principal);
+            }
+        } else {
+            throw new IllegalStateException("Unexpected principal type: " + principal.getClass().getName());
+        }
     }
 }
 

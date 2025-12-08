@@ -53,6 +53,7 @@ dependencies {
 	implementation 'com.google.cloud:google-cloud-monitoring:3.22.0'
     implementation 'com.google.apis:google-api-services-iam:v1-rev20251010-2.0.0'
 	implementation 'com.google.cloud:google-cloud-asset:3.82.0'
+	implementation 'com.google.cloud:google-cloud-compute:1.28.0'
 
 	// Iamport (PortOne) 결제
 	implementation 'com.github.iamport:iamport-rest-client-java:0.2.20'
