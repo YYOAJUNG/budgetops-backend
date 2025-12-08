@@ -2,6 +2,7 @@ package com.budgetops.backend.gcp.controller;
 
 import com.budgetops.backend.gcp.dto.GcpResourceListResponse;
 import com.budgetops.backend.gcp.dto.GcpResourceMetricsResponse;
+import com.budgetops.backend.gcp.service.GcpResourceControlService;
 import com.budgetops.backend.gcp.service.GcpResourceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +17,7 @@ import java.util.List;
 public class GcpResourceController {
 
     private final GcpResourceService service;
+    private final GcpResourceControlService resourceControlService;
 
     @GetMapping("/accounts/{accountId}/resources")
     public ResponseEntity<GcpResourceListResponse> listResources(@PathVariable Long accountId) {
@@ -36,6 +38,24 @@ public class GcpResourceController {
     ) {
         GcpResourceMetricsResponse metrics = service.getResourceMetrics(resourceId, getCurrentMemberId(), hours);
         return ResponseEntity.ok(metrics);
+    }
+
+    @PostMapping("/accounts/{accountId}/resources/{resourceId}/start")
+    public ResponseEntity<Void> startInstance(
+            @PathVariable Long accountId,
+            @PathVariable String resourceId
+    ) {
+        resourceControlService.startInstance(accountId, resourceId, getCurrentMemberId());
+        return ResponseEntity.accepted().build();
+    }
+
+    @PostMapping("/accounts/{accountId}/resources/{resourceId}/stop")
+    public ResponseEntity<Void> stopInstance(
+            @PathVariable Long accountId,
+            @PathVariable String resourceId
+    ) {
+        resourceControlService.stopInstance(accountId, resourceId, getCurrentMemberId());
+        return ResponseEntity.accepted().build();
     }
 
     private Long getCurrentMemberId() {
