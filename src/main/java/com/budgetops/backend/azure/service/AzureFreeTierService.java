@@ -106,11 +106,23 @@ public class AzureFreeTierService {
                 .findFirst()
                 .orElse("USD");
 
-        double limit = creditLimitAmount != null && creditLimitAmount > 0
+        // 크레딧 한도는 항상 "USD 기준"으로 해석하고, 비용 통화에 맞게 환산해서 비교한다.
+        double baseLimitUsd = creditLimitAmount != null && creditLimitAmount > 0
                 ? creditLimitAmount
                 : (account.getCreditLimitAmount() != null && account.getCreditLimitAmount() > 0
                     ? account.getCreditLimitAmount()
                     : AzureFreeTierLimits.AZURE_SIGNUP_CREDIT_USD);
+
+        // 단순 환율 (근사치) – 향후 외부 환율 API로 교체 가능
+        double exchangeRateUsdToKrw = 1350.0;
+
+        double limit;
+        if ("KRW".equalsIgnoreCase(currency)) {
+            limit = baseLimitUsd * exchangeRateUsdToKrw;
+        } else {
+            // 기본적으로 USD 또는 그 외 통화는 그대로 사용
+            limit = baseLimitUsd;
+        }
 
         double remaining = Math.max(0.0, limit - usedAmount);
         double percentage = limit > 0
