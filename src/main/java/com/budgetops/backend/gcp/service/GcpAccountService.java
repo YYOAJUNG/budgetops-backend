@@ -227,6 +227,12 @@ public class GcpAccountService {
                 account.setBillingExportDatasetId(datasetIdStr);
                 account.setBillingExportLocation(datasetLocation);
                 account.setEncryptedServiceAccountKey(request.getServiceAccountKeyJson());
+                if (request.getHasCredit() != null) {
+                    account.setHasCredit(request.getHasCredit());
+                }
+                if (request.getCreditLimitAmount() != null) {
+                    account.setCreditLimitAmount(request.getCreditLimitAmount());
+                }
 
                 GcpAccount saved = gcpAccountRepository.save(account);
 
@@ -248,6 +254,12 @@ public class GcpAccountService {
             entity.setBillingExportLocation(datasetLocation);
             entity.setEncryptedServiceAccountKey(request.getServiceAccountKeyJson());
             entity.setOwner(member);
+            if (request.getHasCredit() != null) {
+                entity.setHasCredit(request.getHasCredit());
+            }
+            if (request.getCreditLimitAmount() != null) {
+                entity.setCreditLimitAmount(request.getCreditLimitAmount());
+            }
 
             GcpAccount saved = gcpAccountRepository.save(entity);
 
@@ -296,6 +308,8 @@ public class GcpAccountService {
         response.setName(account.getName());
         response.setProjectId(account.getProjectId());
         response.setCreatedAt(account.getCreatedAt());
+        response.setHasCredit(account.getHasCredit());
+        response.setCreditLimitAmount(account.getCreditLimitAmount());
 
         // serviceAccountId 파싱: "budgetops@elated-bison-476314-f8.iam.gserviceaccount.com"
         // @ 앞부분만 추출하여 serviceAccountName으로 설정

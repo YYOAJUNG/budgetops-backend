@@ -5,6 +5,7 @@ import com.budgetops.backend.azure.dto.AzureAccountResponse;
 import com.budgetops.backend.azure.entity.AzureAccount;
 import com.budgetops.backend.azure.service.AzureAccountService;
 import com.budgetops.backend.azure.service.AzureCostService;
+import com.budgetops.backend.azure.service.AzureFreeTierService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -22,6 +23,7 @@ public class AzureAccountController {
 
     private final AzureAccountService accountService;
     private final AzureCostService costService;
+    private final AzureFreeTierService freeTierService;
 
     @PostMapping
     public ResponseEntity<?> register(@Valid @RequestBody AzureAccountCreateRequest request) {
@@ -34,6 +36,8 @@ public class AzureAccountController {
             public final String clientId = saved.getClientId();
             public final String clientSecretLast4 = "****" + (saved.getClientSecretLast4() != null ? saved.getClientSecretLast4() : "");
             public final boolean active = Boolean.TRUE.equals(saved.getActive());
+            public final Boolean hasCredit = saved.getHasCredit();
+            public final Double creditLimitAmount = saved.getCreditLimitAmount();
         });
     }
 
@@ -107,6 +111,36 @@ public class AzureAccountController {
         return ResponseEntity.ok(costs);
     }
 
+    /**
+     * 특정 Azure 계정의 크레딧 기반 프리티어 사용량 조회 (근사치)
+     * GET /api/azure/accounts/{accountId}/freetier/usage
+     *
+     * 쿼리 파라미터:
+     * - startDate, endDate: 분석에 사용할 기간 (미지정 시 크레딧 기간과 동일)
+     * - creditLimit: 크레딧 한도 (미지정 시 기본 200 USD 가정)
+     * - creditStart, creditEnd: 크레딧 유효 기간 (미지정 시 오늘 ~ 오늘+1개월)
+     */
+    @GetMapping("/{accountId}/freetier/usage")
+    public ResponseEntity<AzureFreeTierService.FreeTierUsage> getFreeTierUsage(
+            @PathVariable Long accountId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Double creditLimit,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate creditStart,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate creditEnd
+    ) {
+        AzureFreeTierService.FreeTierUsage usage = freeTierService.getCreditFreeTierUsage(
+                accountId,
+                getCurrentMemberId(),
+                startDate,
+                endDate,
+                creditLimit,
+                creditStart,
+                creditEnd
+        );
+        return ResponseEntity.ok(usage);
+    }
+
     private AzureAccountResponse toResponse(AzureAccount account) {
         return AzureAccountResponse.builder()
                 .id(account.getId())
@@ -116,6 +150,10 @@ public class AzureAccountController {
                 .clientId(account.getClientId())
                 .clientSecretLast4("****" + (account.getClientSecretLast4() != null ? account.getClientSecretLast4() : ""))
                 .active(Boolean.TRUE.equals(account.getActive()))
+                .hasCredit(account.getHasCredit())
+                .creditLimitAmount(account.getCreditLimitAmount())
+                .creditStartDate(account.getCreditStartDate())
+                .creditEndDate(account.getCreditEndDate())
                 .build();
     }
 
