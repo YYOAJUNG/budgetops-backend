@@ -109,6 +109,47 @@ public class GcpResourceControlService {
     }
 
     /**
+     * GCP Compute Engine 인스턴스 삭제
+     * 
+     * @param accountId GCP 계정 ID
+     * @param resourceId 리소스 ID (GCP 인스턴스 ID)
+     * @param memberId 멤버 ID (권한 검증용)
+     */
+    @Transactional
+    public void deleteInstance(Long accountId, String resourceId, Long memberId) {
+        GcpResource resource = getValidatedResource(resourceId, accountId, memberId);
+        GcpAccount account = resource.getGcpAccount();
+        
+        String instanceName = extractInstanceName(resource);
+        String zone = extractZone(resource);
+        String projectId = account.getProjectId();
+
+        log.info("Deleting GCP instance {} in zone {} for account {}", instanceName, zone, accountId);
+
+        ServiceAccountCredentials credentials = GcpCredentialParser.parse(account.getEncryptedServiceAccountKey());
+
+        try {
+            InstancesSettings settings = InstancesSettings.newBuilder()
+                    .setCredentialsProvider(() -> credentials)
+                    .build();
+            
+            try (InstancesClient instancesClient = InstancesClient.create(settings)) {
+                OperationFuture<Operation, Operation> operationFuture = instancesClient.deleteAsync(projectId, zone, instanceName);
+                
+                // 비동기 작업이므로 완료를 기다리지 않음
+                log.info("Successfully initiated delete operation for instance {}: operation {}", 
+                        instanceName, operationFuture.getName());
+            }
+        } catch (IOException e) {
+            log.error("Failed to delete GCP instance {}: {}", instanceName, e.getMessage(), e);
+            throw new IllegalStateException("GCP 인스턴스 삭제 실패: " + e.getMessage(), e);
+        } catch (Exception e) {
+            log.error("Unexpected error while deleting GCP instance {}", instanceName, e);
+            throw new RuntimeException("GCP 인스턴스 삭제 중 오류 발생: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * 리소스 검증 및 조회
      */
     private GcpResource getValidatedResource(String resourceId, Long accountId, Long memberId) {

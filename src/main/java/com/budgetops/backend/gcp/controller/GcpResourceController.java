@@ -58,6 +58,15 @@ public class GcpResourceController {
         return ResponseEntity.accepted().build();
     }
 
+    @DeleteMapping("/accounts/{accountId}/resources/{resourceId}")
+    public ResponseEntity<Void> deleteInstance(
+            @PathVariable Long accountId,
+            @PathVariable String resourceId
+    ) {
+        resourceControlService.deleteInstance(accountId, resourceId, getCurrentMemberId());
+        return ResponseEntity.noContent().build();
+    }
+
     private Long getCurrentMemberId() {
         Object principal = SecurityContextHolder.getContext()
                 .getAuthentication()
