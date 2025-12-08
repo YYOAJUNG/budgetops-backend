@@ -71,7 +71,7 @@ public class GcpFreeTierService {
                 : (account.getCreditStartDate() != null ? account.getCreditStartDate() : today);
         LocalDate effectiveCreditEnd = creditEndDate != null
                 ? creditEndDate
-                : (account.getCreditEndDate() != null ? account.getCreditEndDate() : effectiveCreditStart.plusMonths(1));
+                : (account.getCreditEndDate() != null ? account.getCreditEndDate() : effectiveCreditStart.plusDays(90));
 
         if (effectiveCreditEnd.isBefore(effectiveCreditStart)) {
             throw new IllegalArgumentException("크레딧 종료일은 시작일 이후여야 합니다.");
@@ -92,18 +92,30 @@ public class GcpFreeTierService {
 
         double usedAmount = Math.max(0.0, costs.getTotalCreditUsed());
 
-        double limit = creditLimitAmount != null && creditLimitAmount > 0
+        // 크레딧 한도는 항상 "USD 기준"으로 해석하고, Billing Export 통화에 맞게 환산
+        double baseLimitUsd = creditLimitAmount != null && creditLimitAmount > 0
                 ? creditLimitAmount
                 : (account.getCreditLimitAmount() != null && account.getCreditLimitAmount() > 0
                     ? account.getCreditLimitAmount()
                     : GcpFreeTierLimits.DEFAULT_FREE_TIER_CREDIT_LIMIT);
 
+        // 단순 환율 (근사치) – 필요 시 외부 환율 API로 교체 가능
+        double exchangeRateUsdToKrw = 1350.0;
+
+        String currency = costs.getCurrency() != null ? costs.getCurrency() : "USD";
+
+        double limit;
+        if ("KRW".equalsIgnoreCase(currency)) {
+            limit = baseLimitUsd * exchangeRateUsdToKrw;
+        } else {
+            // 기본적으로 USD 또는 기타 통화는 그대로 사용
+            limit = baseLimitUsd;
+        }
+
         double remaining = Math.max(0.0, limit - usedAmount);
         double percentage = limit > 0
                 ? Math.min(100.0, (usedAmount / limit) * 100.0)
                 : 0.0;
-
-        String currency = costs.getCurrency() != null ? costs.getCurrency() : "USD";
 
         return FreeTierUsage.builder()
                 .usedAmount(usedAmount)
