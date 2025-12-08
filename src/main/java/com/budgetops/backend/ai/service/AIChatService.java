@@ -85,20 +85,60 @@ public class AIChatService {
                 history.subList(0, history.size() - 20).clear();
             }
 
-            // 토큰 차감 (실제 사용량의 50%만 차감)
+            // 토큰 차감 전에 먼저 확인
             Long memberId = getCurrentMemberId();
             Integer remainingTokens = null;
-            if (memberId != null && geminiResponse.getTotalTokens() != null) {
-                try {
-                    int actualTokenUsed = geminiResponse.getTotalTokens();
-                    int tokensToDeduct = (int) Math.ceil(actualTokenUsed / 2.0);  // 반만 차감 (올림)
 
+            if (memberId != null && geminiResponse.getTotalTokens() != null) {
+                int actualTokenUsed = geminiResponse.getTotalTokens();
+                int tokensToDeduct = (int) Math.ceil(actualTokenUsed / 2.0);  // 반만 차감 (올림)
+
+                // 토큰 부족 여부 미리 확인
+                if (!billingService.hasEnoughTokens(memberId, tokensToDeduct)) {
+                    int currentTokens = billingService.getCurrentTokens(memberId);
+                    log.warn("토큰 부족으로 AI 응답 차단: memberId={}, required={}, current={}",
+                            memberId, tokensToDeduct, currentTokens);
+
+                    // 토큰 부족 안내 메시지 반환 (에러가 아닌 정상 응답으로)
+                    String insufficientTokenMessage = String.format(
+                            "토큰이 부족하여 AI 응답을 생성할 수 없습니다.\n\n" +
+                            "현재 보유 토큰: %d개\n" +
+                            "필요한 토큰: %d개\n\n" +
+                            "토큰을 충전하시거나 PRO 플랜으로 업그레이드해주세요.",
+                            currentTokens, tokensToDeduct
+                    );
+
+                    return ChatResponse.builder()
+                            .response(insufficientTokenMessage)
+                            .sessionId(sessionId)
+                            .tokenUsage(null)
+                            .remainingTokens(currentTokens)
+                            .build();
+                }
+
+                // 토큰 차감 (실제 사용량의 50%만 차감)
+                try {
                     remainingTokens = billingService.consumeTokens(memberId, tokensToDeduct);
                     log.info("토큰 차감 완료: memberId={}, actualUsed={}, deducted={}, remaining={}",
                             memberId, actualTokenUsed, tokensToDeduct, remainingTokens);
                 } catch (IllegalStateException e) {
-                    log.error("토큰 차감 실패: {}", e.getMessage());
-                    throw new RuntimeException("토큰이 부족합니다. 토큰을 구매해주세요.");
+                    // 이중 확인에도 실패한 경우 (동시성 문제 등)
+                    int currentTokens = billingService.getCurrentTokens(memberId);
+                    log.error("토큰 차감 실패 (동시성 이슈 가능): {}", e.getMessage());
+
+                    String insufficientTokenMessage = String.format(
+                            "토큰이 부족하여 AI 응답을 생성할 수 없습니다.\n\n" +
+                            "현재 보유 토큰: %d개\n\n" +
+                            "토큰을 충전하시거나 PRO 플랜으로 업그레이드해주세요.",
+                            currentTokens
+                    );
+
+                    return ChatResponse.builder()
+                            .response(insufficientTokenMessage)
+                            .sessionId(sessionId)
+                            .tokenUsage(null)
+                            .remainingTokens(currentTokens)
+                            .build();
                 }
             }
 
