@@ -68,4 +68,18 @@ public class BillingController {
 
         return ResponseEntity.ok(BillingResponse.from(billing));
     }
+
+    /**
+     * 구독 취소 (다음 결제일까지 현재 플랜 유지)
+     */
+    @PostMapping("/cancel")
+    public ResponseEntity<BillingResponse> cancelSubscription(@PathVariable Long userId) {
+        Member member = getMemberById(userId);
+        Billing billing = billingService.cancelSubscription(member);
+
+        log.info("구독 취소 완료: userId={}, plan={}, nextBillingDate={}",
+                userId, billing.getCurrentPlan(), billing.getNextBillingDate());
+
+        return ResponseEntity.ok(BillingResponse.from(billing));
+    }
 }

@@ -57,7 +57,7 @@ public class BillingResponse {
                 .nextPaymentDate(billing.getNextBillingDate() != null
                     ? billing.getNextBillingDate().format(DateConstants.DATE_FORMAT)
                     : null)
-                .status("active")
+                .status(billing.getStatus().getValue())  // "active", "canceled", "past_due"
 
                 // 토큰/할당량 정보
                 .currentTokens(billing.getCurrentTokens())
