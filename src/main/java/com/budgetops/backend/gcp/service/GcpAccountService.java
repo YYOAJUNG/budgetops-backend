@@ -1,6 +1,8 @@
 package com.budgetops.backend.gcp.service;
 
 import com.budgetops.backend.gcp.dto.*;
+import com.budgetops.backend.domain.user.entity.Member;
+import com.budgetops.backend.domain.user.repository.MemberRepository;
 import com.google.auth.oauth2.ServiceAccountCredentials;
 import com.budgetops.backend.gcp.entity.GcpAccount;
 import com.budgetops.backend.gcp.repository.GcpAccountRepository;
@@ -10,6 +12,8 @@ import com.google.cloud.bigquery.BigQueryOptions;
 import com.google.cloud.bigquery.Dataset;
 import com.google.cloud.bigquery.DatasetId;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,22 +22,15 @@ import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class GcpAccountService {
 
     private final GcpServiceAccountVerifier serviceAccountVerifier;
     private final GcpBillingAccountVerifier billingVerifier;
     private final GcpAccountRepository gcpAccountRepository;
     private final GcpResourceRepository gcpResourceRepository;
-
-    public GcpAccountService(GcpServiceAccountVerifier serviceAccountVerifier,
-                             GcpBillingAccountVerifier billingVerifier,
-                             GcpAccountRepository gcpAccountRepository,
-                             GcpResourceRepository gcpResourceRepository) {
-        this.serviceAccountVerifier = serviceAccountVerifier;
-        this.billingVerifier = billingVerifier;
-        this.gcpAccountRepository = gcpAccountRepository;
-        this.gcpResourceRepository = gcpResourceRepository;
-    }
+    private final MemberRepository memberRepository;
 
     public ServiceAccountTestResponse testServiceAccount(ServiceAccountTestRequest request) {
         if (request.getServiceAccountId() == null || request.getServiceAccountId().isBlank()) {
@@ -163,7 +160,7 @@ public class GcpAccountService {
         return response;
     }
 
-    public SaveIntegrationResponse saveIntegration(SaveIntegrationRequest request) {
+    public SaveIntegrationResponse saveIntegration(SaveIntegrationRequest request, Long memberId) {
         SaveIntegrationResponse res = new SaveIntegrationResponse();
         
         if (request.getServiceAccountId() == null || request.getServiceAccountId().isBlank()) {
@@ -177,6 +174,7 @@ public class GcpAccountService {
             return res;
         }
         try {
+            Member member = getMemberOrThrow(memberId);
             ServiceAccountCredentials credentials = GcpCredentialParser.parse(request.getServiceAccountKeyJson());
             String projectId = credentials.getProjectId();
 
@@ -199,14 +197,6 @@ public class GcpAccountService {
                 // 권한/구성이 아직 안되었을 수 있으므로 무시하고 계속 저장
             }
 
-            // 서비스 계정 ID 중복 체크
-            java.util.Optional<GcpAccount> existingAccount = gcpAccountRepository.findByServiceAccountId(request.getServiceAccountId());
-            if (existingAccount.isPresent()) {
-                res.setOk(false);
-                res.setMessage("이미 등록된 서비스 계정 ID입니다. 서비스 계정 ID: " + request.getServiceAccountId());
-                return res;
-            }
-
             // 빌링 계정 ID 형식 검증 및 정규화
             String billingAccountId = null;
             if (request.getBillingAccountId() != null && !request.getBillingAccountId().isBlank()) {
@@ -221,6 +211,40 @@ public class GcpAccountService {
                 billingAccountId = billingId;
             }
 
+            // 서비스 계정 ID 중복 체크
+            java.util.Optional<GcpAccount> existingAccount = gcpAccountRepository.findByServiceAccountId(request.getServiceAccountId());
+            if (existingAccount.isPresent()) {
+                GcpAccount account = existingAccount.get();
+                Long previousOwnerId = account.getOwner() != null ? account.getOwner().getId() : null;
+                if (previousOwnerId != null && !previousOwnerId.equals(memberId)) {
+                    log.info("Reassigning GCP account {} from member {} to {}", account.getId(), previousOwnerId, memberId);
+                }
+
+                account.setOwner(member);
+                account.setName(request.getName());
+                account.setProjectId(projectId);
+                account.setBillingAccountId(billingAccountId);
+                account.setBillingExportDatasetId(datasetIdStr);
+                account.setBillingExportLocation(datasetLocation);
+                account.setEncryptedServiceAccountKey(request.getServiceAccountKeyJson());
+                if (request.getHasCredit() != null) {
+                    account.setHasCredit(request.getHasCredit());
+                }
+                if (request.getCreditLimitAmount() != null) {
+                    account.setCreditLimitAmount(request.getCreditLimitAmount());
+                }
+
+                GcpAccount saved = gcpAccountRepository.save(account);
+
+                res.setOk(true);
+                res.setId(saved.getId());
+                res.setName(saved.getName());
+                res.setServiceAccountId(saved.getServiceAccountId());
+                res.setProjectId(saved.getProjectId());
+                res.setMessage("Integration updated");
+                return res;
+            }
+
             GcpAccount entity = new GcpAccount();
             entity.setName(request.getName());
             entity.setServiceAccountId(request.getServiceAccountId());
@@ -229,6 +253,13 @@ public class GcpAccountService {
             entity.setBillingExportDatasetId(datasetIdStr);
             entity.setBillingExportLocation(datasetLocation);
             entity.setEncryptedServiceAccountKey(request.getServiceAccountKeyJson());
+            entity.setOwner(member);
+            if (request.getHasCredit() != null) {
+                entity.setHasCredit(request.getHasCredit());
+            }
+            if (request.getCreditLimitAmount() != null) {
+                entity.setCreditLimitAmount(request.getCreditLimitAmount());
+            }
 
             GcpAccount saved = gcpAccountRepository.save(entity);
 
@@ -250,15 +281,16 @@ public class GcpAccountService {
         }
     }
 
-    public List<GcpAccountResponse> listAccounts() {
-        return gcpAccountRepository.findAll().stream()
+    public List<GcpAccountResponse> listAccounts(Long memberId) {
+        getMemberOrThrow(memberId);
+        return gcpAccountRepository.findByOwnerId(memberId).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
 
     @Transactional
-    public void deleteAccount(Long id) {
-        GcpAccount account = gcpAccountRepository.findById(id)
+    public void deleteAccount(Long id, Long memberId) {
+        GcpAccount account = gcpAccountRepository.findByIdAndOwnerId(id, memberId)
                 .orElseThrow(() -> new IllegalArgumentException("GCP 계정을 찾을 수 없습니다."));
         
         // 계정에 연결된 모든 리소스를 먼저 삭제 (외래키 제약조건 해결)
@@ -276,6 +308,8 @@ public class GcpAccountService {
         response.setName(account.getName());
         response.setProjectId(account.getProjectId());
         response.setCreatedAt(account.getCreatedAt());
+        response.setHasCredit(account.getHasCredit());
+        response.setCreditLimitAmount(account.getCreditLimitAmount());
 
         // serviceAccountId 파싱: "budgetops@elated-bison-476314-f8.iam.gserviceaccount.com"
         // @ 앞부분만 추출하여 serviceAccountName으로 설정
@@ -289,6 +323,12 @@ public class GcpAccountService {
 
         return response;
     }
+
+    private Member getMemberOrThrow(Long memberId) {
+        return memberRepository.findById(memberId)
+                .orElseThrow(() -> new IllegalArgumentException("Member를 찾을 수 없습니다: " + memberId));
+    }
+
 }
 
 

@@ -1,7 +1,6 @@
 package com.budgetops.backend.oauth.filter;
 
 import com.budgetops.backend.oauth.util.JwtTokenProvider;
-import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -36,13 +35,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (StringUtils.hasText(jwt) && jwtTokenProvider.validateToken(jwt)) {
                 // JWT에서 memberId 추출
                 Long memberId = jwtTokenProvider.getMemberIdFromToken(jwt);
+                
+                // JWT에서 role 추출
+                String role = jwtTokenProvider.getRoleFromToken(jwt);
+                if (role == null || role.isEmpty()) {
+                    role = "USER"; // 기본값
+                }
+                
+                // role에 따라 권한 부여
+                String authority = "ROLE_" + role;
 
                 // 사용자 인증 객체 생성 (principal에 memberId 사용)
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(
                                 memberId,
                                 null,
-                                List.of(new SimpleGrantedAuthority("ROLE_USER"))
+                                List.of(new SimpleGrantedAuthority(authority))
                         );
 
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
@@ -50,7 +58,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // SecurityContext에 인증 정보 설정
                 SecurityContextHolder.getContext().setAuthentication(authentication);
 
-                log.debug("Set Authentication for memberId: {}", memberId);
+                log.debug("Set Authentication for memberId: {}, role: {}", memberId, role);
             }
         } catch (Exception ex) {
             log.error("Could not set user authentication in security context", ex);

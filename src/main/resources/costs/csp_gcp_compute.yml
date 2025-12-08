@@ -12,7 +12,7 @@ rules:
       - metric: memory_utilization
         threshold: 40
         period: 7d
-    recommendation: "CPU 및 메모리 사용률이 7일간 평균 40% 미만인 인스턴스는 한 단계 작은 머신 타입으로 변경을 고려하세요."
+    recommendation: "현재 CPU 및 메모리 사용률이 7일간 평균 40% 미만이기 때문에, 한 단계 작은 머신 타입으로 변경하여 비용을 절감하세요."
     cost_saving: "월 약 30-50% 비용 절감 가능"
     
   - id: committed_use_discounts

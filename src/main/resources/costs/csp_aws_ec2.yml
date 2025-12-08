@@ -12,7 +12,7 @@ rules:
       - metric: memory_utilization
         threshold: 40
         period: 7d
-    recommendation: "CPU 및 메모리 사용률이 7일간 평균 40% 미만인 인스턴스는 한 단계 작은 인스턴스 타입으로 변경을 고려하세요."
+    recommendation: "현재 CPU 및 메모리 사용률이 7일간 평균 40% 미만이기 때문에, 한 단계 작은 인스턴스 타입으로 변경하여 비용을 절감하세요."
     cost_saving: "월 약 30-50% 비용 절감 가능"
     
   - id: stop_unused_instances
@@ -25,7 +25,7 @@ rules:
       - metric: network_in
         threshold: 1MB
         period: 14d
-    recommendation: "14일간 CPU 사용률이 5% 미만이고 네트워크 트래픽이 거의 없는 인스턴스는 중지하거나 삭제를 고려하세요."
+    recommendation: "14일간 CPU 사용률이 5% 미만이고 네트워크 트래픽이 거의 없기 때문에, 이 인스턴스는 중지하거나 삭제하여 비용을 절감하세요."
     cost_saving: "월 100% 비용 절감 (중지 시)"
     
   - id: reserved_instances
@@ -36,7 +36,7 @@ rules:
         threshold: 365d
       - metric: instance_type
         value: "m5.large, m5.xlarge, t3.medium, t3.large"
-    recommendation: "1년 이상 지속적으로 실행되는 인스턴스는 Reserved Instances로 전환하여 최대 72% 할인을 받으세요."
+    recommendation: "1년 이상 지속적으로 실행되고 있기 때문에, Reserved Instances로 전환하여 최대 72% 할인을 받으세요."
     cost_saving: "월 약 50-72% 비용 절감 가능"
     
   - id: spot_instances
@@ -47,6 +47,6 @@ rules:
         value: "batch, development, testing"
       - metric: interruption_tolerance
         value: "high"
-    recommendation: "중단 가능한 배치 작업이나 개발/테스트 환경은 Spot Instances를 활용하여 최대 90% 할인을 받으세요."
+    recommendation: "배치 작업이나 개발/테스트 환경이기 때문에, Spot Instances를 활용하여 최대 90% 할인을 받으세요."
     cost_saving: "월 약 70-90% 비용 절감 가능"
 

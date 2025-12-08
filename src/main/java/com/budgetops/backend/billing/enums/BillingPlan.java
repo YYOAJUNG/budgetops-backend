@@ -4,12 +4,12 @@ import lombok.Getter;
 
 @Getter
 public enum BillingPlan {
-    FREE("Free", 0, 100),      // AI 어시스턴트 기본 할당량
-    PRO("Pro", 4900, 1000);    // AI 어시스턴트 확장 할당량
+    FREE("Free", 0, 10000),      // AI 어시스턴트 기본 할당량 (10k 토큰)
+    PRO("Pro", 4900, 30000);     // AI 어시스턴트 확장 할당량 (30k 토큰 = 기본 10k + Pro 추가 20k)
 
     private final String displayName;
     private final int monthlyPrice;        // 월 고정 가격 (원화 KRW)
-    private final int aiAssistantQuota;    // AI 어시스턴트 월 사용 할당량
+    private final int aiAssistantQuota;    // AI 어시스턴트 월 사용 할당량 (토큰)
 
     BillingPlan(String displayName, int monthlyPrice, int aiAssistantQuota) {
         this.displayName = displayName;

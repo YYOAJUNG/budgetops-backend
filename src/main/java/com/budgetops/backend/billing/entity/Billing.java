@@ -1,6 +1,7 @@
 package com.budgetops.backend.billing.entity;
 
 import com.budgetops.backend.billing.enums.BillingPlan;
+import com.budgetops.backend.billing.enums.SubscriptionStatus;
 import com.budgetops.backend.domain.user.entity.Member;
 import jakarta.persistence.*;
 import lombok.*;
@@ -35,6 +36,11 @@ public class Billing {
     @Builder.Default
     private int currentPrice = 0;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private SubscriptionStatus status = SubscriptionStatus.ACTIVE;
+
     @Column(name = "next_billing_date")
     private LocalDateTime nextBillingDate;
 
@@ -66,6 +72,23 @@ public class Billing {
     }
 
     /**
+     * 토큰 차감
+     */
+    public void consumeTokens(int tokens) {
+        if (this.currentTokens < tokens) {
+            throw new IllegalStateException("토큰이 부족합니다. 현재: " + this.currentTokens + ", 필요: " + tokens);
+        }
+        this.currentTokens -= tokens;
+    }
+
+    /**
+     * 토큰 보유 여부 확인
+     */
+    public boolean hasEnoughTokens(int required) {
+        return this.currentTokens >= required;
+    }
+
+    /**
      * 무료 요금제인지 확인
      */
     public boolean isFreePlan() {
@@ -77,5 +100,33 @@ public class Billing {
      */
     public void setNextBillingDateFromNow() {
         this.nextBillingDate = LocalDateTime.now().plusMonths(1);
+    }
+
+    /**
+     * 구독 취소 (다음 결제일까지 현재 플랜 유지)
+     */
+    public void cancelSubscription() {
+        this.status = SubscriptionStatus.CANCELED;
+    }
+
+    /**
+     * 구독이 취소되었는지 확인
+     */
+    public boolean isCanceled() {
+        return this.status == SubscriptionStatus.CANCELED;
+    }
+
+    /**
+     * 구독이 활성 상태인지 확인
+     */
+    public boolean isActive() {
+        return this.status == SubscriptionStatus.ACTIVE;
+    }
+
+    /**
+     * 구독 재활성화
+     */
+    public void reactivateSubscription() {
+        this.status = SubscriptionStatus.ACTIVE;
     }
 }

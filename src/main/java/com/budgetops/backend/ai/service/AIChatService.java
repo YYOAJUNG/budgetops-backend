@@ -4,18 +4,18 @@ import com.budgetops.backend.ai.config.GeminiConfig;
 import com.budgetops.backend.ai.dto.ChatRequest;
 import com.budgetops.backend.ai.dto.ChatResponse;
 import com.budgetops.backend.costs.CostOptimizationRuleLoader;
-import com.budgetops.backend.aws.entity.AwsAccount;
-import com.budgetops.backend.aws.repository.AwsAccountRepository;
-import com.budgetops.backend.aws.service.AwsEc2Service;
-import com.budgetops.backend.aws.service.AwsCostService;
-import com.budgetops.backend.aws.dto.AwsEc2InstanceResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -23,22 +23,19 @@ public class AIChatService {
     
     private final GeminiConfig geminiConfig;
     private final CostOptimizationRuleLoader ruleLoader;
+    private final MCPContextBuilder mcpContextBuilder;
+    private final com.budgetops.backend.billing.service.BillingService billingService;
     private final Map<String, List<Map<String, String>>> chatSessions = new HashMap<>();
     private final WebClient webClient;
-    private final AwsAccountRepository awsAccountRepository;
-    private final AwsEc2Service awsEc2Service;
-    private final AwsCostService awsCostService;
-    
+
     public AIChatService(GeminiConfig geminiConfig,
                          CostOptimizationRuleLoader ruleLoader,
-                         AwsAccountRepository awsAccountRepository,
-                         AwsEc2Service awsEc2Service,
-                         AwsCostService awsCostService) {
+                         MCPContextBuilder mcpContextBuilder,
+                         com.budgetops.backend.billing.service.BillingService billingService) {
         this.geminiConfig = geminiConfig;
         this.ruleLoader = ruleLoader;
-        this.awsAccountRepository = awsAccountRepository;
-        this.awsEc2Service = awsEc2Service;
-        this.awsCostService = awsCostService;
+        this.mcpContextBuilder = mcpContextBuilder;
+        this.billingService = billingService;
         this.webClient = WebClient.builder()
                 .baseUrl("https://generativelanguage.googleapis.com/v1beta")
                 .build();
@@ -74,24 +71,48 @@ public class AIChatService {
         
         try {
             // Gemini API 호출
-            String response = callGeminiAPI(systemPrompt, history);
-            
+            GeminiApiResponse geminiResponse = callGeminiAPI(systemPrompt, history);
+            String response = geminiResponse.getText();
+
             // AI 응답 추가
             Map<String, String> aiMessage = new HashMap<>();
             aiMessage.put("role", "model");
             aiMessage.put("parts", response);
             history.add(aiMessage);
-            
+
             // 히스토리 크기 제한 (최근 20개 메시지만 유지)
             if (history.size() > 20) {
                 history.subList(0, history.size() - 20).clear();
             }
-            
+
+            // 토큰 차감 (실제 사용량의 50%만 차감)
+            Long memberId = getCurrentMemberId();
+            Integer remainingTokens = null;
+            if (memberId != null && geminiResponse.getTotalTokens() != null) {
+                try {
+                    int actualTokenUsed = geminiResponse.getTotalTokens();
+                    int tokensToDeduct = (int) Math.ceil(actualTokenUsed / 2.0);  // 반만 차감 (올림)
+
+                    remainingTokens = billingService.consumeTokens(memberId, tokensToDeduct);
+                    log.info("토큰 차감 완료: memberId={}, actualUsed={}, deducted={}, remaining={}",
+                            memberId, actualTokenUsed, tokensToDeduct, remainingTokens);
+                } catch (IllegalStateException e) {
+                    log.error("토큰 차감 실패: {}", e.getMessage());
+                    throw new RuntimeException("토큰이 부족합니다. 토큰을 구매해주세요.");
+                }
+            }
+
             return ChatResponse.builder()
                     .response(response)
                     .sessionId(sessionId)
+                    .tokenUsage(ChatResponse.TokenUsage.builder()
+                            .promptTokens(geminiResponse.getPromptTokens())
+                            .completionTokens(geminiResponse.getCompletionTokens())
+                            .totalTokens(geminiResponse.getTotalTokens())
+                            .build())
+                    .remainingTokens(remainingTokens)
                     .build();
-                    
+
         } catch (Exception e) {
             log.error("Failed to get response from Gemini API", e);
             throw new RuntimeException("AI 응답 생성 중 오류가 발생했습니다: " + e.getMessage(), e);
@@ -101,110 +122,75 @@ public class AIChatService {
     private String buildSystemPrompt() {
         StringBuilder prompt = new StringBuilder();
         prompt.append("당신은 BudgetOps의 클라우드 비용 최적화 전문 AI 어시스턴트입니다.\n\n");
-        prompt.append("다음은 클라우드 비용 최적화를 위한 규칙입니다:\n\n");
-        prompt.append(ruleLoader.formatRulesForPrompt());
-        prompt.append("\n\n");
         
-        // 사용자 리소스 및 비용 정보 추가
+        // MCP 컨텍스트 추가 (예외 발생 시에도 계속 진행)
         try {
-            List<AwsAccount> activeAccounts = awsAccountRepository.findByActiveTrue();
-            if (!activeAccounts.isEmpty()) {
-                prompt.append("=== 사용자 클라우드 리소스 및 비용 정보 ===\n\n");
-                
-                // 비용 정보 조회 (최근 30일) - 실패해도 계속 진행
+            Long memberId = getCurrentMemberId();
+            if (memberId != null) {
                 try {
-                    java.time.LocalDate endDate = java.time.LocalDate.now().plusDays(1);
-                    java.time.LocalDate startDate = endDate.minusDays(30);
-                    String startDateStr = startDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
-                    String endDateStr = endDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
-                    
-                    List<AwsCostService.AccountCost> accountCosts = awsCostService.getAllAccountsCosts(startDateStr, endDateStr);
-                    double totalCost = accountCosts.stream().mapToDouble(AwsCostService.AccountCost::totalCost).sum();
-                    
-                    prompt.append("📊 최근 30일 비용 요약:\n");
-                    prompt.append(String.format("- 전체 AWS 비용: $%.2f USD\n", totalCost));
-                    
-                    if (!accountCosts.isEmpty()) {
-                        prompt.append("- 계정별 비용:\n");
-                        for (AwsCostService.AccountCost accountCost : accountCosts) {
-                            prompt.append(String.format("  • %s: $%.2f USD\n", 
-                                    accountCost.accountName(), accountCost.totalCost()));
-                        }
-                    } else {
-                        prompt.append("- 계정별 비용 데이터를 불러올 수 없습니다 (Cost Explorer 권한 확인 필요)\n");
+                    MCPContextBuilder.MCPContext mcpContext = mcpContextBuilder.buildContext(memberId);
+                    String contextText = mcpContextBuilder.formatContextForPrompt(mcpContext);
+                    // 프롬프트가 너무 길어지지 않도록 제한 (약 8000자)
+                    if (contextText.length() > 8000) {
+                        log.warn("MCP context too long ({} chars), truncating", contextText.length());
+                        contextText = contextText.substring(0, 8000) + "\n\n(일부 내용이 생략되었습니다.)\n";
                     }
+                    prompt.append(contextText);
                     prompt.append("\n");
                 } catch (Exception e) {
-                    log.warn("Failed to fetch cost information for prompt: {}", e.getMessage());
-                    prompt.append("📊 최근 30일 비용 요약:\n");
-                    prompt.append("- 비용 정보를 불러올 수 없습니다 (Cost Explorer 권한 확인 필요)\n\n");
+                    log.error("Failed to build MCP context for member {}: {}", memberId, e.getMessage(), e);
+                    prompt.append("리소스 정보를 불러오지 못했습니다. 규칙 기반 답변을 제공합니다.\n\n");
                 }
-                
-                // 리소스 정보
-                prompt.append("🖥️ AWS EC2 리소스 요약:\n");
-                for (AwsAccount account : activeAccounts) {
-                    try {
-                        String region = account.getDefaultRegion() != null ? account.getDefaultRegion() : "us-east-1";
-                        List<AwsEc2InstanceResponse> instances = awsEc2Service.listInstances(account.getId(), region);
-                        
-                        long running = instances.stream().filter(i -> "running".equalsIgnoreCase(i.getState())).count();
-                        long stopped = instances.stream().filter(i -> "stopped".equalsIgnoreCase(i.getState())).count();
-                        
-                        prompt.append(String.format("- 계정: %s (리전: %s)\n", 
-                                account.getName() != null ? account.getName() : "Account " + account.getId(), region));
-                        prompt.append(String.format("  총 %d대 (실행중: %d대, 중지: %d대)\n", 
-                                instances.size(), running, stopped));
-                        
-                        // 인스턴스 타입별 요약
-                        Map<String, Long> typeCount = new HashMap<>();
-                        for (AwsEc2InstanceResponse instance : instances) {
-                            String instanceType = instance.getInstanceType() != null ? instance.getInstanceType() : "unknown";
-                            typeCount.put(instanceType, typeCount.getOrDefault(instanceType, 0L) + 1);
-                        }
-                        if (!typeCount.isEmpty()) {
-                            prompt.append("  인스턴스 타입별: ");
-                            List<String> typeSummary = new ArrayList<>();
-                            for (Map.Entry<String, Long> entry : typeCount.entrySet()) {
-                                typeSummary.add(entry.getKey() + " x" + entry.getValue());
-                            }
-                            prompt.append(String.join(", ", typeSummary)).append("\n");
-                        }
-                    } catch (Exception e) {
-                        log.warn("Failed to fetch EC2 instances for account {}: {}", account.getId(), e.getMessage());
-                        prompt.append(String.format("- 계정: %s (리소스 조회 실패)\n", 
-                                account.getName() != null ? account.getName() : "Account " + account.getId()));
-                    }
-                }
-                prompt.append("\n");
-                
-                prompt.append("💡 사용 가능한 분석 옵션:\n");
-                prompt.append("1. 전체 비용 분석: 모든 AWS 계정의 총 비용을 분석하고 절감 방안 제시\n");
-                prompt.append("2. 계정별 비용 분석: 특정 계정의 비용을 상세 분석\n");
-                prompt.append("3. 서비스별 분석: EC2, S3, RDS 등 특정 서비스의 비용 최적화\n");
-                prompt.append("4. 리소스 최적화: 현재 실행 중인 EC2 인스턴스의 크기/타입 최적화 제안\n");
-                prompt.append("5. 미사용 리소스 식별: 장기간 중지된 인스턴스나 사용하지 않는 리소스 식별\n\n");
-                
-            } else {
-                prompt.append("현재 활성화된 AWS 계정이 없습니다.\n");
-                prompt.append("계정을 연결하면 실제 비용 데이터를 기반으로 최적화 조언을 제공할 수 있습니다.\n\n");
             }
         } catch (Exception e) {
-            log.error("Failed to build resource and cost information", e);
-            prompt.append("리소스 및 비용 정보를 불러오지 못했습니다. 규칙 기반 답변을 제공합니다.\n\n");
+            log.error("Failed to get member ID for MCP context: {}", e.getMessage(), e);
+            prompt.append("리소스 정보를 불러오지 못했습니다. 규칙 기반 답변을 제공합니다.\n\n");
         }
         
-        prompt.append("사용자의 질문에 친절하고 전문적으로 답변하세요. ");
-        prompt.append("위의 비용 정보와 리소스 정보를 참고하여 구체적이고 실용적인 최적화 조언을 제시하세요. ");
-        prompt.append("사용자가 특정 서비스나 계정에 대해 질문하면, 해당 정보를 활용하여 답변하세요. ");
-        prompt.append("답변은 한국어로 작성하세요. ");
-        prompt.append("중요: 답변에서 마크다운 문법을 사용하지 마세요. ");
-        prompt.append("---, ###, **, # 등의 마크다운 기호를 사용하지 말고 일반 텍스트로만 작성하세요. ");
-        prompt.append("제목이나 강조가 필요하면 줄바꿈과 일반 텍스트로 표현하세요.");
+        // 최적화 규칙 추가
+        prompt.append("=== 클라우드 비용 최적화 규칙 ===\n\n");
+        prompt.append(ruleLoader.formatRulesForPrompt());
+        prompt.append("\n");
+        
+        // 답변 가이드라인
+        prompt.append("=== 답변 작성 가이드라인 ===\n\n");
+        prompt.append("1. 답변 스타일:\n");
+        prompt.append("   - '~한다면 ~하세요' 형식이 아닌 '~하기 때문에 ~하세요' 형식으로 답변하세요.\n");
+        prompt.append("   - 실제 리소스 데이터를 분석한 결과를 바탕으로 구체적인 권고를 제시하세요.\n");
+        prompt.append("   - 예: '현재 CPU 사용률이 7일간 평균 15%이기 때문에, 더 작은 인스턴스 타입으로 변경하여 비용을 절감하세요.'\n\n");
+        prompt.append("2. 리소스 기반 분석:\n");
+        prompt.append("   - 위에 제공된 실제 리소스 현황을 기반으로 분석하세요.\n");
+        prompt.append("   - AWS, Azure, GCP, NCP 등 모든 CSP의 리소스와 비용 정보를 고려하여 답변하세요.\n");
+        prompt.append("   - 특정 리소스나 계정에 대해 질문받으면, 해당 리소스의 실제 데이터를 참고하여 답변하세요.\n");
+        prompt.append("   - 리소스 이름, 타입, 상태 등 구체적인 정보를 활용하여 답변하세요.\n");
+        prompt.append("   - 중요: 특정 CSP의 비용 데이터가 없다고 해서 '비용 데이터가 없습니다'라고만 답변하지 말고, ");
+        prompt.append("해당 CSP의 리소스 현황을 기반으로 최적화 권고를 제시하세요.\n\n");
+        prompt.append("3. 최적화 권고:\n");
+        prompt.append("   - 규칙과 실제 리소스 데이터를 매칭하여 최적화 기회를 식별하세요.\n");
+        prompt.append("   - 각 권고에는 구체적인 이유(리소스 상태, 메트릭 값 등)를 포함하세요.\n");
+        prompt.append("   - 예상 절감액이나 비용 절감 효과를 구체적으로 제시하세요.\n\n");
+        prompt.append("4. 답변 형식:\n");
+        prompt.append("   - 답변은 한국어로 작성하세요.\n");
+        prompt.append("   - 마크다운 문법을 사용하지 마세요 (---, ###, **, # 등 사용 금지).\n");
+        prompt.append("   - 일반 텍스트로만 작성하고, 줄바꿈으로 구조를 표현하세요.\n");
+        prompt.append("   - 친절하고 전문적인 톤을 유지하세요.");
         
         return prompt.toString();
     }
     
-    private String callGeminiAPI(String systemPrompt, List<Map<String, String>> history) {
+    private Long getCurrentMemberId() {
+        try {
+            Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            if (principal instanceof Long) {
+                return (Long) principal;
+            }
+        } catch (Exception e) {
+            log.debug("Failed to get current member ID: {}", e.getMessage());
+        }
+        return null;
+    }
+    
+    private GeminiApiResponse callGeminiAPI(String systemPrompt, List<Map<String, String>> history) {
         try {
             Map<String, Object> requestBody = new HashMap<>();
             
@@ -239,14 +225,16 @@ public class AIChatService {
             generationConfig.put("temperature", 0.7);
             generationConfig.put("topK", 40);
             generationConfig.put("topP", 0.95);
-            generationConfig.put("maxOutputTokens", 2048);
+            generationConfig.put("maxOutputTokens", 8192); // 답변이 끊기는 문제 해결을 위해 증가
             requestBody.put("generationConfig", generationConfig);
             
             String url = String.format("/models/%s:generateContent?key=%s", 
                     geminiConfig.getModelName(), geminiConfig.getApiKey());
             
             log.debug("Calling Gemini API: {}", url);
+            log.debug("System prompt length: {} characters", systemPrompt.length());
             
+            @SuppressWarnings("unchecked")
             Map<String, Object> response;
             try {
                 response = webClient.post()
@@ -255,7 +243,7 @@ public class AIChatService {
                         .bodyValue(requestBody)
                         .retrieve()
                         .bodyToMono(Map.class)
-                        .timeout(Duration.ofSeconds(30))
+                        .timeout(Duration.ofSeconds(50)) // 타임아웃 증가 (30초 -> 50초)
                         .block();
             } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
                 log.error("Gemini API HTTP 오류: {} - {}", e.getStatusCode(), e.getMessage());
@@ -305,16 +293,71 @@ public class AIChatService {
             
             @SuppressWarnings("unchecked")
             List<Map<String, String>> parts = (List<Map<String, String>>) content.get("parts");
-            
+
             if (parts == null || parts.isEmpty()) {
                 throw new RuntimeException("Gemini API 응답에 parts가 없습니다.");
             }
-            
-            return parts.get(0).get("text");
-            
+
+            String text = parts.get(0).get("text");
+
+            // usageMetadata 파싱
+            Integer promptTokens = null;
+            Integer completionTokens = null;
+            Integer totalTokens = null;
+
+            if (response.containsKey("usageMetadata")) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> usageMetadata = (Map<String, Object>) response.get("usageMetadata");
+
+                promptTokens = usageMetadata.get("promptTokenCount") != null
+                        ? ((Number) usageMetadata.get("promptTokenCount")).intValue() : null;
+                completionTokens = usageMetadata.get("candidatesTokenCount") != null
+                        ? ((Number) usageMetadata.get("candidatesTokenCount")).intValue() : null;
+                totalTokens = usageMetadata.get("totalTokenCount") != null
+                        ? ((Number) usageMetadata.get("totalTokenCount")).intValue() : null;
+
+                log.debug("Token usage - prompt: {}, completion: {}, total: {}",
+                        promptTokens, completionTokens, totalTokens);
+            }
+
+            return new GeminiApiResponse(text, promptTokens, completionTokens, totalTokens);
+
         } catch (Exception e) {
             log.error("Gemini API 호출 실패", e);
             throw new RuntimeException("Gemini API 호출 중 오류: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Gemini API 응답 래퍼 클래스
+     */
+    private static class GeminiApiResponse {
+        private final String text;
+        private final Integer promptTokens;
+        private final Integer completionTokens;
+        private final Integer totalTokens;
+
+        public GeminiApiResponse(String text, Integer promptTokens, Integer completionTokens, Integer totalTokens) {
+            this.text = text;
+            this.promptTokens = promptTokens;
+            this.completionTokens = completionTokens;
+            this.totalTokens = totalTokens;
+        }
+
+        public String getText() {
+            return text;
+        }
+
+        public Integer getPromptTokens() {
+            return promptTokens;
+        }
+
+        public Integer getCompletionTokens() {
+            return completionTokens;
+        }
+
+        public Integer getTotalTokens() {
+            return totalTokens;
         }
     }
 }

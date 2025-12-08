@@ -20,9 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
@@ -247,6 +245,80 @@ public class GcpCostService {
         response.setSummary(summary);
         response.setAccounts(accountCosts);
         
+        return response;
+    }
+
+    /**
+     * 특정 회원의 모든 GCP 계정 비용 합계
+     */
+    @Transactional(readOnly = true)
+    public double getMemberTotalNetCost(Long memberId, String startDate, String endDate) {
+        List<GcpAccount> accounts = accountRepository.findByOwnerId(memberId);
+        if (accounts.isEmpty()) {
+            return 0.0;
+        }
+        double total = 0.0;
+        for (GcpAccount account : accounts) {
+            try {
+                GcpAccountDailyCostsResponse response = getCosts(account.getId(), startDate, endDate);
+                total += Math.max(0.0, response.getTotalNetCost());
+            } catch (Exception e) {
+                log.warn("Failed to fetch GCP cost for account {}: {}", account.getId(), e.getMessage());
+            }
+        }
+        return roundToFirstDecimal(total);
+    }
+
+    /**
+     * 특정 회원의 GCP 계정별 순 비용 목록 (통화: USD, NetCost 기준)
+     */
+    @Transactional(readOnly = true)
+    public GcpAllAccountsCostsResponse getMemberAccountsCosts(Long memberId, String startDate, String endDate) {
+        List<GcpAccount> accounts = accountRepository.findByOwnerId(memberId);
+
+        GcpAllAccountsCostsResponse response = new GcpAllAccountsCostsResponse();
+        List<GcpAllAccountsCostsResponse.AccountCost> accountCosts = new ArrayList<>();
+
+        double totalGrossCost = 0.0;
+        double totalCreditUsed = 0.0;
+        double totalNetCost = 0.0;
+        String currency = "USD";
+
+        for (GcpAccount account : accounts) {
+            try {
+                GcpAccountDailyCostsResponse accountCostResponse = getCosts(account.getId(), startDate, endDate);
+
+                GcpAllAccountsCostsResponse.AccountCost accountCost = new GcpAllAccountsCostsResponse.AccountCost();
+                accountCost.setAccountId(accountCostResponse.getAccountId());
+                accountCost.setAccountName(accountCostResponse.getAccountName());
+                accountCost.setCurrency(accountCostResponse.getCurrency());
+                accountCost.setTotalGrossCost(accountCostResponse.getTotalGrossCost());
+                accountCost.setTotalCreditUsed(accountCostResponse.getTotalCreditUsed());
+                accountCost.setTotalNetCost(accountCostResponse.getTotalNetCost());
+                accountCost.setTotalDisplayNetCost(accountCostResponse.getTotalDisplayNetCost());
+                accountCosts.add(accountCost);
+
+                if (accountCostResponse.getCurrency() != null) {
+                    currency = accountCostResponse.getCurrency();
+                }
+
+                totalGrossCost += accountCostResponse.getTotalGrossCost();
+                totalCreditUsed += accountCostResponse.getTotalCreditUsed();
+                totalNetCost += accountCostResponse.getTotalNetCost();
+            } catch (Exception e) {
+                log.warn("Failed to fetch GCP cost for member account {}: {}", account.getId(), e.getMessage());
+            }
+        }
+
+        GcpAllAccountsCostsResponse.Summary summary = new GcpAllAccountsCostsResponse.Summary();
+        summary.setCurrency(currency);
+        summary.setTotalGrossCost(totalGrossCost);
+        summary.setTotalCreditUsed(totalCreditUsed);
+        summary.setTotalNetCost(totalNetCost);
+        summary.setTotalDisplayNetCost(Math.max(0, totalNetCost));
+
+        response.setSummary(summary);
+        response.setAccounts(accountCosts);
         return response;
     }
     

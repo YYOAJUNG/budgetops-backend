@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 @Service
@@ -31,11 +32,13 @@ public class BillingService {
                 .member(member)
                 .currentPlan(BillingPlan.FREE)
                 .currentPrice(0)
+                .currentTokens(BillingPlan.FREE.getAiAssistantQuota())  // Free 플랜 초기 토큰 (10k)
                 .build();
 
-        billing.setNextBillingDateFromNow();
+        billing.setNextBillingDate(null);
 
-        log.info("빌링 초기화: memberId={}, plan=FREE", member.getId());
+        log.info("빌링 초기화: memberId={}, plan=FREE, initialTokens={}",
+                member.getId(), BillingPlan.FREE.getAiAssistantQuota());
         return billingRepository.save(billing);
     }
 
@@ -93,14 +96,32 @@ public class BillingService {
         // 요금제 변경
         billing.changePlan(newPlan);
 
+        // 플랜에 따라 토큰 조정
+        int currentTokens = billing.getCurrentTokens();
+        int planQuota = newPlan.getAiAssistantQuota();
+
+        // 현재 토큰이 새 플랜의 기본 할당량보다 적으면 기본 할당량으로 설정
+        // (처음 가입 or 플랜 업그레이드 시 최소 보장)
+        if (currentTokens < planQuota) {
+            billing.setCurrentTokens(planQuota);
+            log.info("플랜 변경에 따른 토큰 증가: memberId={}, oldPlan={}, newPlan={}, oldTokens={}, newTokens={}",
+                    member.getId(), currentPlan, newPlan, currentTokens, planQuota);
+        } else {
+            // 기존 토큰 유지 (사용자가 구매한 토큰 보호)
+            log.info("플랜 변경, 기존 토큰 유지: memberId={}, oldPlan={}, newPlan={}, tokens={}",
+                    member.getId(), currentPlan, newPlan, currentTokens);
+        }
+
         // 다음 결제일 업데이트 (유료 플랜인 경우에만)
         if (!newPlan.isFree()) {
             billing.setNextBillingDateFromNow();
-            log.info("다음 결제일 설정: memberId={}, nextBillingDate={}",
+            billing.reactivateSubscription(); // PRO 플랜 결제 시 구독 재활성화
+            log.info("다음 결제일 설정 및 구독 활성화: memberId={}, nextBillingDate={}",
                     member.getId(), billing.getNextBillingDate());
         } else {
             // FREE 플랜으로 변경 시 결제일 초기화
             billing.setNextBillingDate(null);
+            billing.reactivateSubscription(); // FREE 플랜도 ACTIVE 상태
             log.info("FREE 플랜으로 변경, 결제일 초기화: memberId={}", member.getId());
         }
 
@@ -126,5 +147,101 @@ public class BillingService {
             billingRepository.delete(b);
             log.info("빌링 정보 삭제: memberId={}", member.getId());
         });
+    }
+
+    /**
+     * 토큰 차감 (AI 사용 시)
+     */
+    public int consumeTokens(Long memberId, int tokens) {
+        Billing billing = billingRepository.findByMemberId(memberId)
+                .orElseThrow(() -> new BillingNotFoundException(memberId));
+
+        if (!billing.hasEnoughTokens(tokens)) {
+            log.warn("토큰 부족: memberId={}, required={}, current={}",
+                    memberId, tokens, billing.getCurrentTokens());
+            throw new IllegalStateException("토큰이 부족합니다. 현재: " + billing.getCurrentTokens() + ", 필요: " + tokens);
+        }
+
+        billing.consumeTokens(tokens);
+        billingRepository.save(billing);
+
+        log.info("토큰 차감: memberId={}, consumed={}, remaining={}",
+                memberId, tokens, billing.getCurrentTokens());
+
+        return billing.getCurrentTokens();
+    }
+
+    /**
+     * 토큰 보유 여부 확인
+     */
+    @Transactional(readOnly = true)
+    public boolean hasEnoughTokens(Long memberId, int required) {
+        return billingRepository.findByMemberId(memberId)
+                .map(billing -> billing.hasEnoughTokens(required))
+                .orElse(false);
+    }
+
+    /**
+     * 현재 토큰 잔액 조회
+     */
+    @Transactional(readOnly = true)
+    public int getCurrentTokens(Long memberId) {
+        return billingRepository.findByMemberId(memberId)
+                .map(Billing::getCurrentTokens)
+                .orElse(0);
+    }
+
+    /**
+     * 구독 취소 (다음 결제일까지 현재 플랜 유지)
+     */
+    public Billing cancelSubscription(Member member) {
+        Billing billing = billingRepository.findByMember(member)
+                .orElseThrow(() -> new BillingNotFoundException(member.getId()));
+
+        // FREE 플랜은 취소할 수 없음
+        if (billing.isFreePlan()) {
+            throw new IllegalStateException("FREE 플랜은 취소할 수 없습니다.");
+        }
+
+        // 이미 취소된 구독
+        if (billing.isCanceled()) {
+            log.warn("이미 취소된 구독입니다: memberId={}", member.getId());
+            return billing;
+        }
+
+        // 구독 취소 (상태만 변경, 플랜과 다음 결제일은 유지)
+        billing.cancelSubscription();
+        billingRepository.save(billing);
+
+        log.info("구독 취소: memberId={}, plan={}, nextBillingDate={}, 만료 시 FREE로 전환 예정",
+                member.getId(), billing.getCurrentPlan(), billing.getNextBillingDate());
+
+        return billing;
+    }
+
+    /**
+     * 만료된 구독을 FREE 플랜으로 다운그레이드
+     * 스케줄러에서 호출
+     */
+    public void downgradeExpiredSubscriptions() {
+        // CANCELED 상태이면서 다음 결제일이 지난 구독 조회
+        billingRepository.findAll().stream()
+                .filter(Billing::isCanceled)
+                .filter(billing -> billing.getNextBillingDate() != null)
+                .filter(billing -> billing.getNextBillingDate().isBefore(LocalDateTime.now()))
+                .forEach(billing -> {
+                    log.info("만료된 구독 다운그레이드: memberId={}, oldPlan={}, nextBillingDate={}",
+                            billing.getMember().getId(), billing.getCurrentPlan(), billing.getNextBillingDate());
+
+                    // FREE 플랜으로 변경
+                    billing.changePlan(BillingPlan.FREE);
+                    billing.setNextBillingDate(null);
+                    billing.reactivateSubscription(); // FREE 플랜은 ACTIVE 상태로
+
+                    billingRepository.save(billing);
+
+                    log.info("구독 다운그레이드 완료: memberId={}, newPlan=FREE",
+                            billing.getMember().getId());
+                });
     }
 }

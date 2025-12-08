@@ -45,8 +45,8 @@ public class AwsUsageService {
      * @param endDate 종료 날짜
      * @return 서비스별 사용량 정보
      */
-    public List<ServiceUsage> getEc2Usage(Long accountId, String startDate, String endDate) {
-        AwsAccount account = accountRepository.findById(accountId)
+    public List<ServiceUsage> getEc2Usage(Long accountId, Long memberId, String startDate, String endDate) {
+        AwsAccount account = accountRepository.findByIdAndOwnerId(accountId, memberId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "AWS 계정을 찾을 수 없습니다."));
         
         if (!Boolean.TRUE.equals(account.getActive())) {
@@ -65,7 +65,6 @@ public class AwsUsageService {
             
             LocalDate start = LocalDate.parse(startDate);
             LocalDate end = LocalDate.parse(endDate);
-            long daysBetween = ChronoUnit.DAYS.between(start, end);
             
             // 모든 인스턴스 수집
             List<Instance> allInstances = new ArrayList<>();
@@ -98,7 +97,7 @@ public class AwsUsageService {
                         if (instance.state().name() == InstanceStateName.RUNNING) {
                             long hours = ChronoUnit.HOURS.between(actualStart, actualEnd);
                             if (hours > 0) {
-                                instanceTypeHours.merge(instanceType, (double) hours, Double::sum);
+                                instanceTypeHours.merge(instanceType, (double) hours, (current, add) -> current + add);
                             }
                         }
                     }
@@ -130,11 +129,11 @@ public class AwsUsageService {
     
     /**
      * CloudWatch를 사용하여 실제 사용량 메트릭 수집
-     * 
+     *
      * @param accountId AWS 계정 ID
-     * @param service 서비스명 (EC2, S3, RDS 등)
+     * @param service   서비스명 (EC2, S3, RDS 등)
      * @param startDate 시작 날짜
-     * @param endDate 종료 날짜
+     * @param endDate   종료 날짜
      * @return 사용량 메트릭
      */
     public UsageMetrics getUsageMetrics(Long accountId, String service, String startDate, String endDate) {
@@ -146,41 +145,235 @@ public class AwsUsageService {
         }
         
         String region = account.getDefaultRegion() != null ? account.getDefaultRegion() : "us-east-1";
-        
+        String normalizedService = normalizeServiceForMetrics(service);
+
         try (CloudWatchClient cloudWatchClient = createCloudWatchClient(account, region)) {
             Instant start = LocalDate.parse(startDate).atStartOfDay(ZoneId.systemDefault()).toInstant();
             Instant end = LocalDate.parse(endDate).atStartOfDay(ZoneId.systemDefault()).toInstant();
             
             // 서비스별 메트릭 수집
             Map<String, Double> metrics = new HashMap<>();
-            
-            if ("EC2".equalsIgnoreCase(service)) {
-                // EC2 인스턴스 실행 시간 집계
-                GetMetricStatisticsRequest request = GetMetricStatisticsRequest.builder()
-                        .namespace("AWS/EC2")
-                        .metricName("CPUUtilization")
-                        .startTime(start)
-                        .endTime(end)
-                        .period(3600) // 1시간 단위
-                        .statistics(Statistic.SAMPLE_COUNT)
-                        .build();
-                
-                GetMetricStatisticsResponse response = cloudWatchClient.getMetricStatistics(request);
-                
-                // 메트릭 데이터 처리
-                if (response.datapoints() != null && !response.datapoints().isEmpty()) {
-                    double totalSamples = response.datapoints().stream()
-                            .mapToDouble(Datapoint::sampleCount)
-                            .sum();
-                    metrics.put("instanceHours", totalSamples);
+
+            switch (normalizedService) {
+                case "EC2", "EC2_OTHER" -> {
+                    // EC2 인스턴스 실행 시간 집계 (기존 로직 유지)
+                    GetMetricStatisticsRequest request = GetMetricStatisticsRequest.builder()
+                            .namespace("AWS/EC2")
+                            .metricName("CPUUtilization")
+                            .startTime(start)
+                            .endTime(end)
+                            .period(3600) // 1시간 단위
+                            .statistics(Statistic.SAMPLE_COUNT)
+                            .build();
+
+                    GetMetricStatisticsResponse response = cloudWatchClient.getMetricStatistics(request);
+
+                    if (response.datapoints() != null && !response.datapoints().isEmpty()) {
+                        double totalSamples = response.datapoints().stream()
+                                .mapToDouble(Datapoint::sampleCount)
+                                .sum();
+                        metrics.put("instanceHours", totalSamples);
+                    }
+                }
+                case "S3" -> {
+                    // S3 버킷 기준 사용량 집계 (BucketSizeBytes, NumberOfObjects)
+                    // CloudWatch 메트릭을 버킷 단위로 모두 합산
+                    double totalBucketSizeBytes = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/S3",
+                            "BucketSizeBytes",
+                            start,
+                            end
+                    );
+                    double totalObjectCount = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/S3",
+                            "NumberOfObjects",
+                            start,
+                            end
+                    );
+
+                    // Byte → GB 변환
+                    double totalBucketSizeGb = totalBucketSizeBytes / (1024.0 * 1024.0 * 1024.0);
+
+                    metrics.put("bucketSizeGb", totalBucketSizeGb);
+                    metrics.put("objectCount", totalObjectCount);
+                }
+                case "RDS" -> {
+                    // RDS 인스턴스 실행 시간 집계 (CPUUtilization 샘플 수 기반 근사)
+                    GetMetricStatisticsRequest request = GetMetricStatisticsRequest.builder()
+                            .namespace("AWS/RDS")
+                            .metricName("CPUUtilization")
+                            .startTime(start)
+                            .endTime(end)
+                            .period(3600) // 1시간 단위
+                            .statistics(Statistic.SAMPLE_COUNT)
+                            .build();
+
+                    GetMetricStatisticsResponse response = cloudWatchClient.getMetricStatistics(request);
+
+                    if (response.datapoints() != null && !response.datapoints().isEmpty()) {
+                        double totalSamples = response.datapoints().stream()
+                                .mapToDouble(Datapoint::sampleCount)
+                                .sum();
+                        metrics.put("instanceHours", totalSamples);
+                    }
+                }
+                case "LAMBDA" -> {
+                    // Lambda 함수 호출 수 및 에러 수 집계
+                    double totalInvocations = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/Lambda",
+                            "Invocations",
+                            start,
+                            end
+                    );
+                    double totalErrors = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/Lambda",
+                            "Errors",
+                            start,
+                            end
+                    );
+
+                    metrics.put("invocations", totalInvocations);
+                    metrics.put("errors", totalErrors);
+                }
+                case "DYNAMODB" -> {
+                    // DynamoDB 읽기/쓰기 용량 단위 집계
+                    double readCapacity = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/DynamoDB",
+                            "ConsumedReadCapacityUnits",
+                            start,
+                            end
+                    );
+                    double writeCapacity = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/DynamoDB",
+                            "ConsumedWriteCapacityUnits",
+                            start,
+                            end
+                    );
+
+                    metrics.put("consumedReadCapacityUnits", readCapacity);
+                    metrics.put("consumedWriteCapacityUnits", writeCapacity);
+                }
+                case "ELB" -> {
+                    // Classic ELB 요청 수 집계
+                    double classicReq = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/ELB",
+                            "RequestCount",
+                            start,
+                            end
+                    );
+                    // Application / Network Load Balancer 요청 수 집계
+                    double albReq = sumMetricAcrossDimensions(
+                            cloudWatchClient,
+                            "AWS/ApplicationELB",
+                            "RequestCount",
+                            start,
+                            end
+                    );
+
+                    metrics.put("requestCountClassic", classicReq);
+                    metrics.put("requestCountApplication", albReq);
+                }
+                case "VPC" -> {
+                    // VPC는 네트워크 전송량, NAT Gateway 등 여러 리소스로 구성됨
+                    // 현재는 별도 메트릭을 집계하지 않고 빈 메트릭만 반환 (확장 포인트)
+                    log.info("UsageMetrics requested for VPC - currently no aggregated metrics implemented");
+                }
+                case "COST_EXPLORER", "OTHERS" -> {
+                    // 비용 분석 도구/기타 항목은 CloudWatch 기반 사용량 메트릭이 의미가 없으므로 스킵
+                    log.info("UsageMetrics requested for service without CloudWatch usage metrics: {}", service);
+                }
+                default -> {
+                    // 아직 지원하지 않는 서비스는 빈 메트릭 반환
+                    log.warn("UsageMetrics requested for unsupported service: {}", service);
                 }
             }
-            
+
             return new UsageMetrics(service, metrics);
             
         } catch (Exception e) {
             log.error("Failed to fetch usage metrics for service {}: {}", service, e.getMessage(), e);
             return new UsageMetrics(service, new HashMap<>());
+        }
+    }
+
+    /**
+     * Cost Explorer 서비스 이름 등을 CloudWatch 메트릭 조회용 키로 정규화
+     */
+    private String normalizeServiceForMetrics(String service) {
+        if (service == null) {
+            return "";
+        }
+        String trimmed = service.trim();
+        String upper = trimmed.toUpperCase();
+
+        // Cost Explorer에서 내려오는 대표적인 서비스 이름 매핑
+        return switch (upper) {
+            case "AMAZON ELASTIC COMPUTE CLOUD - COMPUTE" -> "EC2";
+            case "EC2 - OTHER" -> "EC2_OTHER";
+            case "AMAZON RELATIONAL DATABASE SERVICE" -> "RDS";
+            case "AMAZON SIMPLE STORAGE SERVICE" -> "S3";
+            case "AMAZON DYNAMODB" -> "DYNAMODB";
+            case "AWS LAMBDA" -> "LAMBDA";
+            case "AMAZON ELASTIC LOAD BALANCING" -> "ELB";
+            case "AMAZON VIRTUAL PRIVATE CLOUD" -> "VPC";
+            case "AWS COST EXPLORER" -> "COST_EXPLORER";
+            case "OTHERS" -> "OTHERS";
+            default -> upper;
+        };
+    }
+
+    /**
+     * CloudWatch의 ListMetrics + GetMetricStatistics를 사용해
+     * 특정 네임스페이스/메트릭을 모든 리소스 차원에 대해 합산
+     */
+    private double sumMetricAcrossDimensions(CloudWatchClient cloudWatchClient,
+                                             String namespace,
+                                             String metricName,
+                                             Instant start,
+                                             Instant end) {
+        try {
+            ListMetricsRequest listReq = ListMetricsRequest.builder()
+                    .namespace(namespace)
+                    .metricName(metricName)
+                    .build();
+
+            ListMetricsResponse listRes = cloudWatchClient.listMetrics(listReq);
+            if (listRes.metrics() == null || listRes.metrics().isEmpty()) {
+                return 0.0;
+            }
+
+            double total = 0.0;
+
+            for (Metric metric : listRes.metrics()) {
+                GetMetricStatisticsRequest statsReq = GetMetricStatisticsRequest.builder()
+                        .namespace(namespace)
+                        .metricName(metricName)
+                        .dimensions(metric.dimensions())
+                        .startTime(start)
+                        .endTime(end)
+                        .period(86400) // 1일 단위
+                        .statistics(Statistic.SUM)
+                        .build();
+
+                GetMetricStatisticsResponse statsRes = cloudWatchClient.getMetricStatistics(statsReq);
+                if (statsRes.datapoints() != null && !statsRes.datapoints().isEmpty()) {
+                    total += statsRes.datapoints().stream()
+                            .mapToDouble(Datapoint::sum)
+                            .sum();
+                }
+            }
+
+            return total;
+        } catch (Exception e) {
+            log.warn("Failed to sum metric {} in namespace {}: {}", metricName, namespace, e.getMessage());
+            return 0.0;
         }
     }
     

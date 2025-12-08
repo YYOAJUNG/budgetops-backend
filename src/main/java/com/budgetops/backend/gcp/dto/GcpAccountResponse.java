@@ -13,6 +13,8 @@ public class GcpAccountResponse {
     // private String projectName;  // TODO: 프로젝트 이름 부분 (예: "My First Project")
     private String projectId;   // projectId (예: "elated-bison-476314-f8")
     private Instant createdAt;
+    private Boolean hasCredit;
+    private Double creditLimitAmount;
 }
 
 

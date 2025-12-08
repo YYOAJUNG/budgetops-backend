@@ -31,10 +31,26 @@ public class AuthController {
 
         Claims claims = jwtTokenProvider.getClaims(jwt);
 
+        Long memberId = claims.get("memberId", Long.class);
+        if (memberId == null) {
+            try {
+                memberId = Long.parseLong(claims.getSubject());
+            } catch (NumberFormatException ignored) {
+                memberId = null;
+            }
+        }
+
+        String role = claims.get("role", String.class);
+        if (role == null || role.isEmpty()) {
+            role = "USER"; // 기본값
+        }
+
         UserInfo userInfo = UserInfo.builder()
+                .id(memberId)
                 .email(claims.get("email", String.class))
                 .name(claims.get("name", String.class))
                 .picture(claims.get("picture", String.class))
+                .role(role)
                 .build();
 
         return ResponseEntity.ok(userInfo);

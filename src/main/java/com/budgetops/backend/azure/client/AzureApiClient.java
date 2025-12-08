@@ -12,7 +12,10 @@ import org.springframework.web.client.RestTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -23,6 +26,9 @@ public class AzureApiClient {
 
     private static final String ARM_BASE_URL = "https://management.azure.com";
     private static final String SCOPE_MANAGEMENT = "https://management.azure.com/.default";
+    private static final String COMPUTE_API_VERSION = "2023-09-01";
+    private static final String METRICS_API_VERSION = "2023-10-01";
+    private static final DateTimeFormatter ISO_INSTANT = DateTimeFormatter.ISO_INSTANT;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
@@ -85,7 +91,7 @@ public class AzureApiClient {
     public JsonNode listVirtualMachines(String subscriptionId, String accessToken) {
         String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId + "/providers/Microsoft.Compute/virtualMachines";
         Map<String, String> params = new HashMap<>();
-        params.put("api-version", "2023-09-01");
+        params.put("api-version", COMPUTE_API_VERSION);
         return get(url, accessToken, params);
     }
 
@@ -95,7 +101,7 @@ public class AzureApiClient {
                 + "/providers/Microsoft.Compute/virtualMachines/" + vmName
                 + "/instanceView";
         Map<String, String> params = new HashMap<>();
-        params.put("api-version", "2023-09-01");
+        params.put("api-version", COMPUTE_API_VERSION);
         return get(url, accessToken, params);
     }
 
@@ -146,6 +152,159 @@ public class AzureApiClient {
         return post(url, accessToken, params, body);
     }
 
+    /**
+     * Virtual Machine 메트릭 조회
+     * @param subscriptionId 구독 ID
+     * @param resourceGroup 리소스 그룹 이름
+     * @param vmName VM 이름
+     * @param accessToken 액세스 토큰
+     * @param hours 조회할 시간 범위 (기본값: 1시간)
+     * @return 메트릭 데이터 (JSON)
+     */
+    public JsonNode getVirtualMachineMetrics(String subscriptionId, String resourceGroup, String vmName, String accessToken, Integer hours) {
+        String resourceId = String.format("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s",
+                subscriptionId, resourceGroup, vmName);
+        
+        int hoursToQuery = hours != null && hours > 0 ? hours : 1;
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(hoursToQuery, ChronoUnit.HOURS);
+        
+        // Azure Monitor API 엔드포인트
+        String baseUrl = ARM_BASE_URL + resourceId + "/providers/microsoft.insights/metrics";
+
+        // 시간 범위 포맷: ISO 8601 형식 (예: 2023-12-01T10:00:00Z/2023-12-01T11:00:00Z)
+        String timespan = formatTimespan(startTime, endTime);
+        
+        // 메트릭 이름들 - Azure API는 공백을 인코딩하지 않고 그대로 전달해야 함
+        // Azure API 유효 메트릭: Percentage CPU, Network In, Network Out, Available Memory Bytes, Available Memory Percentage
+        String metricNames = "Percentage CPU,Network In Total,Network Out Total,Available Memory Percentage,Available Memory Bytes";
+        
+        // interval 계산: 1시간이면 PT5M, 더 짧은 간격이 필요하면 조정
+        String interval = hoursToQuery <= 1 ? "PT5M" : "PT1H"; // 1시간 이하면 5분 간격, 그 이상이면 1시간 간격
+        
+        // URL 수동 구성 - UriComponentsBuilder를 사용하여 자동 인코딩 (하지만 metricnames는 제외)
+        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(baseUrl);
+        builder.queryParam("api-version", METRICS_API_VERSION);
+        builder.queryParam("timespan", timespan);
+        builder.queryParam("interval", interval);
+        builder.queryParam("aggregation", "Average");
+        builder.queryParam("metricNamespace", "microsoft.compute/virtualmachines");
+        // metricnames는 공백을 인코딩하지 않고 그대로 추가
+        String requestUrl = builder.toUriString() + "&metricnames=" + metricNames;
+        
+        log.debug("Azure metrics request URL: {}", requestUrl);
+        
+        return getRaw(requestUrl, accessToken);
+    }
+
+    /**
+     * Azure API용 timespan 포맷팅
+     */
+    private String formatTimespan(Instant startTime, Instant endTime) {
+        // Azure API는 ISO-8601 형식을 요구하지만, 초 단위까지 표시
+        return ISO_INSTANT.format(startTime) + "/" + ISO_INSTANT.format(endTime);
+    }
+    
+    /**
+     * 쿼리 파라미터가 이미 인코딩된 전체 URL을 그대로 사용해 GET 호출을 수행한다.
+     * Azure Metrics API와 같이 인코딩 방식에 민감한 엔드포인트에만 사용한다.
+     */
+    private JsonNode getRaw(String requestUrl, String accessToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(
+                    requestUrl,
+                    HttpMethod.GET,
+                    new HttpEntity<>(headers),
+                    String.class
+            );
+            return objectMapper.readTree(response.getBody());
+        } catch (HttpStatusCodeException e) {
+            log.error("Azure GET 호출 실패: url={}, status={}, body={}", requestUrl, e.getStatusCode(), e.getResponseBodyAsString());
+            throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+        } catch (Exception e) {
+            log.error("Azure GET 호출 중 알 수 없는 오류: url={}", requestUrl, e);
+            throw new IllegalStateException("Azure API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Virtual Machine 중지 (Power Off)
+     */
+    public void powerOffVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken, boolean skipShutdown) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName + "/powerOff";
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-09-01");
+        if (skipShutdown) {
+            params.put("skipShutdown", "true");
+        }
+        postWithoutResponse(url, accessToken, params, null);
+    }
+
+    /**
+     * Virtual Machine 시작
+     */
+    public void startVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName + "/start";
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-09-01");
+        postWithoutResponse(url, accessToken, params, null);
+    }
+
+    /**
+     * Virtual Machine 할당 해제 (Deallocate)
+     */
+    public void deallocateVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName + "/deallocate";
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-09-01");
+        postWithoutResponse(url, accessToken, params, null);
+    }
+
+    /**
+     * Virtual Machine 삭제
+     */
+    public void deleteVirtualMachine(String subscriptionId, String resourceGroup, String vmName, String accessToken) {
+        String url = ARM_BASE_URL + "/subscriptions/" + subscriptionId
+                + "/resourceGroups/" + resourceGroup
+                + "/providers/Microsoft.Compute/virtualMachines/" + vmName;
+        Map<String, String> params = new HashMap<>();
+        params.put("api-version", "2023-09-01");
+        delete(url, accessToken, params);
+    }
+
+    /**
+     * DELETE 요청
+     */
+    private void delete(String url, String accessToken, Map<String, String> params) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+
+        String requestUrl = withQueryParams(url, params);
+        try {
+            restTemplate.exchange(
+                    requestUrl,
+                    HttpMethod.DELETE,
+                    new HttpEntity<>(headers),
+                    Void.class
+            );
+        } catch (HttpStatusCodeException e) {
+            log.error("Azure DELETE 호출 실패: url={}, status={}, body={}", requestUrl, e.getStatusCode(), e.getResponseBodyAsString());
+            throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+        } catch (Exception e) {
+            log.error("Azure DELETE 호출 중 알 수 없는 오류: url={}", requestUrl, e);
+            throw new IllegalStateException("Azure API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
+        }
+    }
+
     private JsonNode get(String url, String accessToken, Map<String, String> params) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(accessToken);
@@ -181,7 +340,37 @@ public class AzureApiClient {
                     new HttpEntity<>(body, headers),
                     String.class
             );
-            return objectMapper.readTree(response.getBody());
+            String responseBody = response.getBody();
+            if (responseBody == null || responseBody.isBlank()) {
+                // 응답 본문이 없는 경우 빈 JSON 객체 반환
+                return objectMapper.createObjectNode();
+            }
+            return objectMapper.readTree(responseBody);
+        } catch (HttpStatusCodeException e) {
+            log.error("Azure POST 호출 실패: url={}, status={}, body={}", requestUrl, e.getStatusCode(), e.getResponseBodyAsString());
+            throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+        } catch (Exception e) {
+            log.error("Azure POST 호출 중 알 수 없는 오류: url={}", requestUrl, e);
+            throw new IllegalStateException("Azure API 호출 중 오류가 발생했습니다: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 응답 본문이 없는 POST 요청 (VM 중지/시작 등)
+     */
+    private void postWithoutResponse(String url, String accessToken, Map<String, String> params, Object body) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        String requestUrl = withQueryParams(url, params);
+        try {
+            restTemplate.exchange(
+                    requestUrl,
+                    HttpMethod.POST,
+                    new HttpEntity<>(body, headers),
+                    Void.class
+            );
         } catch (HttpStatusCodeException e) {
             log.error("Azure POST 호출 실패: url={}, status={}, body={}", requestUrl, e.getStatusCode(), e.getResponseBodyAsString());
             throw new IllegalStateException("Azure API 호출 실패: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
@@ -199,5 +388,6 @@ public class AzureApiClient {
         params.forEach(builder::queryParam);
         return builder.toUriString();
     }
+
 }
 

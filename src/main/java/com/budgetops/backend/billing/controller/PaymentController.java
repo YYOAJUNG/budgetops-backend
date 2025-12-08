@@ -1,6 +1,7 @@
 package com.budgetops.backend.billing.controller;
 
 import com.budgetops.backend.billing.constants.DateConstants;
+import com.budgetops.backend.billing.constants.TokenConstants;
 import com.budgetops.backend.billing.dto.request.PaymentRegisterRequest;
 import com.budgetops.backend.billing.dto.request.TokenPurchaseRequest;
 import com.budgetops.backend.billing.dto.response.PaymentHistoryResponse;
@@ -93,17 +94,51 @@ public class PaymentController {
     }
 
     /**
-     * 결제 내역 조회 (Mock)
+     * 결제 내역 조회 (DB)
      */
     @GetMapping("/history")
     public ResponseEntity<List<PaymentHistoryResponse>> getPaymentHistory(@PathVariable Long userId) {
         Member member = getMemberById(userId);
 
-        // Mock 데이터 반환 (DB 연결 시 실제 조회로 교체)
-        List<PaymentHistoryResponse> history = createMockPaymentHistory();
+        // DB에서 실제 결제 내역 조회
+        List<com.budgetops.backend.billing.entity.PaymentHistory> paymentHistories =
+                paymentService.getPaymentHistory(member);
+
+        // DTO로 변환
+        List<PaymentHistoryResponse> history = paymentHistories.stream()
+                .map(this::convertToPaymentHistoryResponse)
+                .collect(java.util.stream.Collectors.toList());
 
         log.info("결제 내역 조회: userId={}, count={}", userId, history.size());
         return ResponseEntity.ok(history);
+    }
+
+    /**
+     * PaymentHistory 엔티티를 PaymentHistoryResponse DTO로 변환
+     */
+    private PaymentHistoryResponse convertToPaymentHistoryResponse(
+            com.budgetops.backend.billing.entity.PaymentHistory history) {
+        return PaymentHistoryResponse.builder()
+                .id(history.getMerchantUid())  // 주문 번호를 ID로 사용
+                .date(history.getPaidAt() != null
+                        ? history.getPaidAt().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+                        : history.getCreatedAt().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE))
+                .amount(history.getAmount())
+                .status(convertPaymentStatus(history.getStatus()))
+                .invoiceUrl("#")  // TODO: 실제 인보이스 URL 구현
+                .build();
+    }
+
+    /**
+     * PaymentStatus enum을 문자열로 변환
+     */
+    private String convertPaymentStatus(com.budgetops.backend.billing.enums.PaymentStatus status) {
+        return switch (status) {
+            case PAID -> "paid";
+            case PENDING -> "pending";
+            case FAILED -> "failed";
+            default -> "pending";
+        };
     }
 
     private List<PaymentHistoryResponse> createMockPaymentHistory() {
@@ -164,11 +199,30 @@ public class PaymentController {
             log.info("일반 결제 사용: userId={}, impUid={}", userId, impUid);
         }
 
-        // Billing 정보 조회 및 토큰 추가
+        // Billing 정보 조회
         Billing billing = billingService.getBillingByMember(member)
                 .orElseThrow(BillingNotFoundException::new);
 
-        billing.addTokens(tokenPackage.getTotalTokens());
+        // Pro 플랜만 토큰 구매 가능
+        if (billing.isFreePlan()) {
+            throw new IllegalStateException("Free 플랜에서는 토큰을 구매할 수 없습니다. Pro 플랜으로 업그레이드해주세요.");
+        }
+
+        // 최대 토큰 보유량 체크
+        int currentTokens = billing.getCurrentTokens();
+        int tokensToAdd = tokenPackage.getTotalTokens();
+        int newTotalTokens = currentTokens + tokensToAdd;
+
+        if (newTotalTokens > TokenConstants.MAX_TOKEN_LIMIT) {
+            int availableSpace = TokenConstants.MAX_TOKEN_LIMIT - currentTokens;
+            throw new IllegalStateException(
+                String.format("토큰 보유량 한도를 초과할 수 없습니다. (현재: %d, 구매: %d, 최대: %d, 구매 가능: %d)",
+                    currentTokens, tokensToAdd, TokenConstants.MAX_TOKEN_LIMIT, availableSpace)
+            );
+        }
+
+        // 토큰 추가
+        billing.addTokens(tokensToAdd);
         billingService.saveBilling(billing);
 
         TokenPurchaseResponse response = TokenPurchaseResponse.builder()
