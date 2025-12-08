@@ -92,6 +92,12 @@ public class AzureAccountService {
         if (request.getCreditLimitAmount() != null) {
             account.setCreditLimitAmount(request.getCreditLimitAmount());
         }
+        if (request.getCreditStartDate() != null) {
+            account.setCreditStartDate(request.getCreditStartDate());
+        }
+        if (request.getCreditEndDate() != null) {
+            account.setCreditEndDate(request.getCreditEndDate());
+        }
 
         return accountRepository.save(account);
     }

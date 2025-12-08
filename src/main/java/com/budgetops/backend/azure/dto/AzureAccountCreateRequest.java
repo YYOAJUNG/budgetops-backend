@@ -1,6 +1,7 @@
 package com.budgetops.backend.azure.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import java.time.LocalDate;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -39,6 +40,16 @@ public class AzureAccountCreateRequest {
      */
     private Double creditLimitAmount;
 
+    /**
+     * 크레딧 유효 시작일 (예: 가입 크레딧 시작일)
+     */
+    private LocalDate creditStartDate;
+
+    /**
+     * 크레딧 유효 종료일
+     */
+    private LocalDate creditEndDate;
+
     public String getName() {
         return name;
     }
@@ -65,6 +76,14 @@ public class AzureAccountCreateRequest {
 
     public Double getCreditLimitAmount() {
         return creditLimitAmount;
+    }
+
+    public LocalDate getCreditStartDate() {
+        return creditStartDate;
+    }
+
+    public LocalDate getCreditEndDate() {
+        return creditEndDate;
     }
 }
 

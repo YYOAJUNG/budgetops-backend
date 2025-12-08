@@ -152,6 +152,8 @@ public class AzureAccountController {
                 .active(Boolean.TRUE.equals(account.getActive()))
                 .hasCredit(account.getHasCredit())
                 .creditLimitAmount(account.getCreditLimitAmount())
+                .creditStartDate(account.getCreditStartDate())
+                .creditEndDate(account.getCreditEndDate())
                 .build();
     }
 

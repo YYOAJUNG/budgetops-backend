@@ -2,6 +2,7 @@ package com.budgetops.backend.azure.dto;
 
 import lombok.Builder;
 import lombok.Value;
+import java.time.LocalDate;
 
 @Value
 @Builder
@@ -15,5 +16,7 @@ public class AzureAccountResponse {
     boolean active;
     Boolean hasCredit;
     Double creditLimitAmount;
+    LocalDate creditStartDate;
+    LocalDate creditEndDate;
 }
 
