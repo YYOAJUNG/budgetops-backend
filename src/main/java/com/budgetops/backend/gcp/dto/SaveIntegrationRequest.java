@@ -2,6 +2,7 @@ package com.budgetops.backend.gcp.dto;
 
 import lombok.Getter;
 import lombok.Setter;
+import java.time.LocalDate;
 
 @Getter
 @Setter
@@ -20,5 +21,15 @@ public class SaveIntegrationRequest {
      * 크레딧 한도 금액. null이면 기본 한도를 사용합니다.
      */
     private Double creditLimitAmount;
+
+    /**
+     * 크레딧 유효 시작일 (선택)
+     */
+    private LocalDate creditStartDate;
+
+    /**
+     * 크레딧 유효 종료일 (선택)
+     */
+    private LocalDate creditEndDate;
 }
 

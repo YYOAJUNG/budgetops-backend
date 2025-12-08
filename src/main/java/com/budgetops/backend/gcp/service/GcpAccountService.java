@@ -233,6 +233,12 @@ public class GcpAccountService {
                 if (request.getCreditLimitAmount() != null) {
                     account.setCreditLimitAmount(request.getCreditLimitAmount());
                 }
+                if (request.getCreditStartDate() != null) {
+                    account.setCreditStartDate(request.getCreditStartDate());
+                }
+                if (request.getCreditEndDate() != null) {
+                    account.setCreditEndDate(request.getCreditEndDate());
+                }
 
                 GcpAccount saved = gcpAccountRepository.save(account);
 
@@ -259,6 +265,12 @@ public class GcpAccountService {
             }
             if (request.getCreditLimitAmount() != null) {
                 entity.setCreditLimitAmount(request.getCreditLimitAmount());
+            }
+            if (request.getCreditStartDate() != null) {
+                entity.setCreditStartDate(request.getCreditStartDate());
+            }
+            if (request.getCreditEndDate() != null) {
+                entity.setCreditEndDate(request.getCreditEndDate());
             }
 
             GcpAccount saved = gcpAccountRepository.save(entity);
