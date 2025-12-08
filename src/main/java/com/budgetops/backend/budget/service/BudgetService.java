@@ -67,6 +67,9 @@ public class BudgetService {
 
         // 기존 설정을 전부 삭제하고, 새 설정으로 교체 (간단한 동작 보장)
         memberAccountBudgetRepository.deleteByMemberId(memberId);
+        // JPA가 삭제 쿼리를 즉시 실행하도록 flush하여, 같은 트랜잭션 내 insert 시
+        // 유니크 제약조건(member_id, provider, account_id) 충돌을 방지
+        memberAccountBudgetRepository.flush();
 
         for (BudgetSettingsRequest.MemberAccountBudgetSetting setting : requestedBudgets) {
             if (setting.monthlyBudgetLimit() == null) {

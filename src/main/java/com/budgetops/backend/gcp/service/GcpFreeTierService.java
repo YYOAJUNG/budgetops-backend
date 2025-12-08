@@ -123,6 +123,8 @@ public class GcpFreeTierService {
                 .remainingAmount(remaining)
                 .percentage(percentage)
                 .currency(currency)
+                .creditStartDate(effectiveCreditStart)
+                .creditEndDate(effectiveCreditEnd)
                 .build();
     }
 
@@ -134,6 +136,8 @@ public class GcpFreeTierService {
         double remainingAmount;
         double percentage;
         String currency;
+        LocalDate creditStartDate;
+        LocalDate creditEndDate;
     }
 }
 
