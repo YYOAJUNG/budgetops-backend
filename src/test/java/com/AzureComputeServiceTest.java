@@ -210,7 +210,7 @@ class AzureComputeServiceTest {
                         .expiresAt(java.time.OffsetDateTime.now().plusHours(1))
                         .build());
 
-        service.startVirtualMachine(1L, "rg", "vm1");
+        service.startVirtualMachine(1L, "vm1", "rg");
 
         verify(apiClient).startVirtualMachine("sub-1", "rg", "vm1", "token");
     }
@@ -234,7 +234,7 @@ class AzureComputeServiceTest {
                         .expiresAt(java.time.OffsetDateTime.now().plusHours(1))
                         .build());
 
-        service.stopVirtualMachine(1L, "rg", "vm1", false);
+        service.stopVirtualMachine(1L, "vm1", "rg", false);
 
         verify(apiClient).powerOffVirtualMachine("sub-1", "rg", "vm1", "token", false);
     }

@@ -39,8 +39,8 @@ class SlackNotificationServiceTest {
     @BeforeEach
     void setUp() {
         // RestTemplateBuilder가 RestTemplate을 반환하도록 설정
-        when(restTemplateBuilder.setConnectTimeout(any())).thenReturn(restTemplateBuilder);
-        when(restTemplateBuilder.setReadTimeout(any())).thenReturn(restTemplateBuilder);
+        when(restTemplateBuilder.connectTimeout(any())).thenReturn(restTemplateBuilder);
+        when(restTemplateBuilder.readTimeout(any())).thenReturn(restTemplateBuilder);
         when(restTemplateBuilder.build()).thenReturn(restTemplate);
 
         slackNotificationService = new SlackNotificationService(restTemplateBuilder);

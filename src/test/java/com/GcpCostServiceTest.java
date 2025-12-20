@@ -42,14 +42,14 @@ class GcpCostServiceTest {
     }
 
     @Test
-    @DisplayName("getAccountCosts - 존재하지 않는 계정")
-    void getAccountCosts_AccountNotFound() {
+    @DisplayName("getCosts - 존재하지 않는 계정")
+    void getCosts_AccountNotFound() {
         // given
-        given(accountRepository.findByIdAndOwnerId(999L, 1L)).willReturn(Optional.empty());
+        given(accountRepository.findById(999L)).willReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> gcpCostService.getAccountCosts(999L, 1L, "2024-01-01", "2024-01-31"))
-                .isInstanceOf(IllegalArgumentException.class)
+        assertThatThrownBy(() -> gcpCostService.getCosts(999L, "2024-01-01", "2024-01-31"))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
                 .hasMessageContaining("GCP 계정을 찾을 수 없습니다");
     }
 }

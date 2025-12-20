@@ -39,7 +39,9 @@ class PaymentServiceTest {
         testPayment = new Payment();
         testPayment.setId(1L);
         testPayment.setMember(testMember);
-        testPayment.setStatus(PaymentStatus.REGISTERED);
+        // 결제 완료 상태 + impUid 설정으로 등록된 결제 수단을 표현
+        testPayment.setStatus(PaymentStatus.PAID);
+        testPayment.setImpUid("imp_1234567890");
         testPayment.setCustomerUid("customer_123");
     }
 

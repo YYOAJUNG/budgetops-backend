@@ -43,26 +43,26 @@ class NcpCostServiceTest {
     }
 
     @Test
-    @DisplayName("getAccountCostsSummary - 존재하지 않는 계정")
-    void getAccountCostsSummary_AccountNotFound() {
+    @DisplayName("getCostSummary - 존재하지 않는 계정")
+    void getCostSummary_AccountNotFound() {
         // given
         given(accountRepository.findByIdAndOwnerId(999L, 1L)).willReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> ncpCostService.getAccountCostsSummary(999L, 1L, "202412"))
+        assertThatThrownBy(() -> ncpCostService.getCostSummary(999L, 1L, "202412"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("NCP 계정을 찾을 수 없습니다");
     }
 
     @Test
-    @DisplayName("getAccountCostsSummary - 비활성화된 계정")
-    void getAccountCostsSummary_InactiveAccount() {
+    @DisplayName("getCostSummary - 비활성화된 계정")
+    void getCostSummary_InactiveAccount() {
         // given
         testAccount.setActive(Boolean.FALSE);
         given(accountRepository.findByIdAndOwnerId(100L, 1L)).willReturn(Optional.of(testAccount));
 
         // when & then
-        assertThatThrownBy(() -> ncpCostService.getAccountCostsSummary(100L, 1L, "202412"))
+        assertThatThrownBy(() -> ncpCostService.getCostSummary(100L, 1L, "202412"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("비활성화된 계정입니다");
     }

@@ -15,6 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import com.budgetops.backend.billing.exception.GlobalExceptionHandler;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -23,6 +24,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -54,7 +56,11 @@ class AdminControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(adminController).build();
+        GlobalExceptionHandler exceptionHandler = new GlobalExceptionHandler();
+        mockMvc = MockMvcBuilders.standaloneSetup(adminController)
+                .setControllerAdvice(exceptionHandler)
+                .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
+                .build();
 
         // 관리자 인증 설정
         adminAuthentication = new UsernamePasswordAuthenticationToken(
@@ -343,7 +349,9 @@ class AdminControllerTest {
         mockMvc.perform(post("/api/admin/users/{userId}/tokens", userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isInternalServerError());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("사용자를 찾을 수 없습니다: 999"));
     }
 
     @Test
@@ -361,7 +369,9 @@ class AdminControllerTest {
         mockMvc.perform(post("/api/admin/users/{userId}/tokens", userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isInternalServerError());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("토큰 보유량 한도를 초과할 수 없습니다"));
     }
 
     @Test

@@ -93,7 +93,6 @@ class GcpAlertServiceTest {
         // given
         given(accountRepository.findById(100L)).willReturn(Optional.of(testAccount));
         given(resourceService.listResources(anyLong(), anyLong())).willThrow(new RuntimeException("API 오류"));
-        given(ruleLoader.getAllRules()).willReturn(Collections.emptyList());
 
         // when
         List<GcpAlert> alerts = gcpAlertService.checkAccount(100L);
