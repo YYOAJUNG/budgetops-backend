@@ -1,4 +1,4 @@
-package com;
+package com.budgetops.backend.admin.controller;
 
 import com.budgetops.backend.admin.controller.AdminController;
 import com.budgetops.backend.admin.dto.AdminPaymentHistoryResponse;

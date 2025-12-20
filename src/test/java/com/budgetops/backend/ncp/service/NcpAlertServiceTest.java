@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
@@ -63,7 +64,7 @@ class NcpAlertServiceTest {
         // given
         given(accountRepository.findAll()).willReturn(List.of(testAccount));
         given(accountRepository.findById(100L)).willReturn(Optional.of(testAccount));
-        given(serverService.listInstances(anyLong(), anyString())).willReturn(Collections.emptyList());
+        given(serverService.listInstances(anyLong(), nullable(String.class))).willReturn(Collections.emptyList());
         given(ruleLoader.getAllRules()).willReturn(Collections.emptyList());
 
         // when
@@ -105,8 +106,7 @@ class NcpAlertServiceTest {
     void checkAccount_ServerFetchFails() {
         // given
         given(accountRepository.findById(100L)).willReturn(Optional.of(testAccount));
-        given(serverService.listInstances(anyLong(), anyString())).willThrow(new RuntimeException("API 오류"));
-        given(ruleLoader.getAllRules()).willReturn(Collections.emptyList());
+        given(serverService.listInstances(anyLong(), nullable(String.class))).willThrow(new RuntimeException("API 오류"));
 
         // when
         List<NcpAlert> alerts = ncpAlertService.checkAccount(100L);

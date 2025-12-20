@@ -1,4 +1,4 @@
-package com;
+package com.budgetops.backend.admin.service;
 
 import com.budgetops.backend.admin.dto.AdminPaymentHistoryResponse;
 import com.budgetops.backend.admin.dto.UserListResponse;
