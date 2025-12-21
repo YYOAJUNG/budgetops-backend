@@ -64,7 +64,8 @@ public class GcpAccountController {
             accountService.deleteAccount(id, getCurrentMemberId());
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            // 테스트 및 일관된 상태 코드를 위해 예외 대신 명시적으로 404를 반환합니다.
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
     }
 
